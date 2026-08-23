@@ -1003,67 +1003,7 @@
         </div>
 
         <div class="nav-section">
-            <div class="nav-section-title">التشغيل</div>
-            @if ($hasP('view_requests'))
-                <a href="/requests" class="nav-link {{ request()->is('requests*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-clipboard-list"></i></span> الطلبات
-                </a>
-            @endif
-            @if ($hasP('view_prepaid_requests'))
-                <a href="/prepaid-requests" class="nav-link {{ request()->is('prepaid-requests*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-receipt"></i></span>تحضير الطلبيه
-                </a>
-            @endif
-            @if ($hasP('view_routes'))
-                <a href="/routes" class="nav-link {{ request()->is('routes*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-route"></i></span> خطوط السير
-                </a>
-            @endif
-            @if ($hasP('view_deliveries'))
-                <a href="/deliveries" class="nav-link {{ request()->is('deliveries*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-truck"></i></span> التسليمات
-                </a>
-            @endif
-            @if ($hasP('view_collections'))
-                <a href="/collections" class="nav-link {{ request()->is('collections*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-coins"></i></span> التحصيلات
-                </a>
-            @endif
-            @if ($hasP('view_commissions'))
-                <a href="/commissions" class="nav-link {{ request()->is('commissions*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-percent"></i></span> العمولات
-                </a>
-            @endif
-            @if ($hasP('view_car_violations'))
-                <a href="/car-violations" class="nav-link {{ request()->is('car-violations*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-car-crash"></i></span> مخالفات السيارات
-                </a>
-            @endif
-        </div>
-
-        <div class="nav-section">
             <div class="nav-section-title">الإدارة</div>
-            @if ($hasP('view_customers'))
-                <a href="/customers" class="nav-link {{ request()->is('customers*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-store"></i></span> العملاء
-                </a>
-            @endif
-            @if ($hasP('view_warehouses'))
-                <a href="/warehouses" class="nav-link {{ request()->is('warehouses*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-warehouse"></i></span> المخازن
-                </a>
-            @endif
-            @if ($hasP('view_items'))
-                <a href="/items" class="nav-link {{ request()->is('items*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-boxes"></i></span> الأصناف
-                </a>
-            @endif
-            @if ($hasP('view_approvals'))
-                <a href="/approvals" class="nav-link {{ request()->is('approvals*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-check-double"></i></span> الموافقات
-                    <span class="badge-count" id="pendingCount">-</span>
-                </a>
-            @endif
             @if ($hasP('view_chat_groups'))
                 <a href="/chat-groups" class="nav-link {{ request()->is('chat-groups*') ? 'active' : '' }}">
                     <span class="icon"><i class="fas fa-comments"></i></span> مجموعات الدردشة
@@ -1328,38 +1268,6 @@ ${bodyHtml}
                 },
                 label: e => `${e.name ?? '-'}${e.employee_code ? ' - ' + e.employee_code : ''}`,
             },
-            customers: {
-                url: '/customers?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: c => `${c.name ?? '-'}${c.company_name ? ' - ' + c.company_name : ''}`,
-            },
-            requests: {
-                url: '/requests?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: req =>
-                    `${req.request_number ?? '#' + req.id} - ${req.customer?.name ?? req.customer_name ?? 'بدون عميل'}`,
-            },
-            deliveries: {
-                url: '/deliveries?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: d =>
-                    `${d.delivery_number ?? '#' + d.id} - ${d.request?.customer?.name ?? d.customer?.name ?? 'بدون عميل'}`,
-            },
-            routes: {
-                url: '/routes?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: route => `${route.route_name ?? route.route_code ?? '#' + route.id}`,
-            },
-            warehouses: {
-                url: '/warehouses?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: w => `${w.name ?? w.warehouse_name ?? '#' + w.id}`,
-            },
-            items: {
-                url: '/items?per_page=1000',
-                rows: r => r.data?.data ?? r.data ?? [],
-                label: item => `${item.name ?? '-'}${item.item_code ? ' - ' + item.item_code : ''}`,
-            },
         };
 
         async function getLookupRows(type) {
@@ -1613,15 +1521,6 @@ ${bodyHtml}
         }
 
         // Load pending approvals count
-        async function loadPendingCount() {
-            try {
-                const r = await apiFetch('/approvals/pending');
-                if (r.success) {
-                    document.getElementById('pendingCount').textContent = r.summary?.total_pending || 0;
-                }
-            } catch (e) {}
-        }
-
         async function loadNotifCount() {
             try {
                 const r = await apiFetch('/notifications/unread-count');
@@ -1637,7 +1536,6 @@ ${bodyHtml}
             hydrateLookupSelects();
 
             if (TOKEN) {
-                loadPendingCount();
                 loadNotifCount();
             }
 

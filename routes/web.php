@@ -62,20 +62,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/employee-points', fn() => view('employee-points.index'));
     Route::get('/ideal-employee',  fn() => view('ideal-employee.index'));
 
-    // Operations
-    Route::get('/requests',     fn() => view('requests.index'));
-    Route::get('/prepaid-requests', fn() => view('prepaid-requests.index'));
-    Route::get('/routes',       fn() => view('routes.index'));
-    Route::get('/deliveries',   fn() => view('deliveries.index'));
-    Route::get('/collections',  fn() => view('collections.index'));
-    Route::get('/commissions',  fn() => view('commissions.index'));
-    Route::get('/car-violations', fn() => view('car-violations.index'));
-
     // Management
-    Route::get('/customers',    fn() => view('customers.index'));
-    Route::get('/warehouses',   fn() => view('warehouses.index'));
-    Route::get('/items',        fn() => view('items.index'));
-    Route::get('/approvals',    fn() => view('approvals.index'));
     Route::get('/reports',      fn() => view('reports.index'));
     Route::get('/notifications', fn() => view('notifications.index'));
     Route::get('/locations',    fn() => view('locations.index'));
