@@ -79,6 +79,8 @@ class EmployeeController
             'employee_type' => ['required', Rule::in(EmployeeTypeEnum::values())],
             'joining_date'  => 'required|date',
             'base_salary'   => 'required|numeric|min:0',
+            'is_custom_attendance' => 'nullable|boolean',
+            'daily_required_hours' => 'nullable|numeric|min:0.5|max:24',
             'collection_commission_rate' => 'nullable|numeric|min:0|max:100',
             'status'        => 'required|in:active,inactive,suspended,resigned,on_leave',
             'reporting_manager_id' => 'nullable|exists:employees,id',
@@ -96,6 +98,10 @@ class EmployeeController
             $employeeType = $this->resolveEmployeeType($validated);
             unset($validated['manager_id'], $validated['is_manager']);
             $validated['employee_type'] = $employeeType->value;
+
+            if (empty($validated['is_custom_attendance'])) {
+                $validated['daily_required_hours'] = null;
+            }
 
             if (array_key_exists('national_id', $validated) && trim((string) $validated['national_id']) === '') {
                 $validated['national_id'] = null;
@@ -153,6 +159,8 @@ class EmployeeController
             'department' => 'sometimes|string',
             'employee_type' => ['sometimes', Rule::in(EmployeeTypeEnum::values())],
             'base_salary' => 'sometimes|numeric|min:0',
+            'is_custom_attendance' => 'nullable|boolean',
+            'daily_required_hours' => 'nullable|numeric|min:0.5|max:24',
             'collection_commission_rate' => 'nullable|numeric|min:0|max:100',
             'status' => 'sometimes|in:active,inactive,suspended,resigned,on_leave',
             'reporting_manager_id' => 'nullable|exists:employees,id',
@@ -182,6 +190,10 @@ class EmployeeController
         unset($validated['manager_id'], $validated['is_manager']);
         if ($employeeType) {
             $validated['employee_type'] = $employeeType->value;
+        }
+
+        if (array_key_exists('is_custom_attendance', $validated) && empty($validated['is_custom_attendance'])) {
+            $validated['daily_required_hours'] = null;
         }
 
         $employee->update($validated);

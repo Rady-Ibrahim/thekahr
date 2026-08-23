@@ -24,6 +24,8 @@ use App\Http\Controllers\Api\EmployeeShiftController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ChatGroupController;
 use App\Http\Controllers\Api\IdealEmployeeController;
+use App\Http\Controllers\Api\NearExpiryItemController;
+use App\Http\Controllers\Api\NearExpirySaleController;
 
 
 // Public
@@ -64,6 +66,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/ideal',    [IdealEmployeeController::class, 'index']);
     Route::post('/ideal',   [IdealEmployeeController::class, 'store']);
     Route::delete('/ideal', [IdealEmployeeController::class, 'destroy']);
+
+    // ── Near-Expiry Items & Sales Incentives / المنتجات قاربة الانتهاء ─────
+    Route::prefix('near-expiry-items')->group(function () {
+        Route::get('/',        [NearExpiryItemController::class, 'index']);
+        Route::post('/',       [NearExpiryItemController::class, 'store']);
+        Route::put('/{id}',    [NearExpiryItemController::class, 'update']);
+        Route::delete('/{id}', [NearExpiryItemController::class, 'destroy']);
+    });
+
+    Route::prefix('near-expiry-sales')->group(function () {
+        Route::get('/leaderboard',   [NearExpirySaleController::class, 'leaderboard']);
+        Route::get('/',              [NearExpirySaleController::class, 'index']);
+        Route::post('/',             [NearExpirySaleController::class, 'store']);
+        Route::post('/{id}/approve', [NearExpirySaleController::class, 'approve']);
+        Route::post('/{id}/reject',  [NearExpirySaleController::class, 'reject']);
+        Route::delete('/{id}',       [NearExpirySaleController::class, 'destroy']);
+    });
 
     // ── Employee Messaging ──────────────────────────────────────────────────
     Route::prefix('messages')->group(function () {
@@ -153,10 +172,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/my-records',                 [AttendanceController::class, 'myRecords']);
         Route::get('/leave-requests',             [AttendanceController::class, 'leaveRequests']);
         Route::get('/monthly-report/{empId}',     [AttendanceController::class, 'monthlyReport']);
+        Route::get('/custom/today',               [AttendanceController::class, 'customToday']);
         Route::get('/',                           [AttendanceController::class, 'index']);
         Route::post('/',                          [AttendanceController::class, 'store']);
         Route::get('/{id}',                       [AttendanceController::class, 'show']);
         Route::get('/{id}/penalty-details',       [AttendanceController::class, 'penaltyDetails']);
+        Route::get('/{id}/sessions',              [AttendanceController::class, 'daySessions']);
+        Route::post('/{id}/sessions',             [AttendanceController::class, 'sessionStore']);
+        Route::put('/sessions/{logId}',           [AttendanceController::class, 'sessionUpdate']);
+        Route::delete('/sessions/{logId}',        [AttendanceController::class, 'sessionDestroy']);
         Route::put('/{id}',                       [AttendanceController::class, 'update']);
         Route::delete('/{id}',                    [AttendanceController::class, 'destroy']);
         Route::post('/check-in',                  [AttendanceController::class, 'checkIn']);

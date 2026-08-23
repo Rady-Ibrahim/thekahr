@@ -127,6 +127,25 @@
                                 <option value="on_leave">إجازة</option><option value="suspended">موقوف</option><option value="resigned">استقال</option>
                             </select>
                         </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2 h-100 d-flex align-items-center justify-content-between gap-2">
+                                <div>
+                                    <label class="form-label mb-0 fw-bold">حضور مخصص بالساعات</label>
+                                    <small class="text-muted d-block">تسجيل حضور/انصراف متعدد بدون ورديات</small>
+                                </div>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" name="is_custom_attendance" id="ef_custom_attendance" onchange="toggleCustomHours()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="customHoursGroup" style="display:none">
+                            <label class="form-label">الساعات المطلوبة يومياً</label>
+                            <div class="input-group">
+                                <input type="number" name="daily_required_hours" id="ef_daily_hours" class="form-control" min="0.5" max="24" step="0.5">
+                                <span class="input-group-text"><i class="fas fa-clock"></i> ساعة</span>
+                            </div>
+                            <small class="text-muted">يُحسب الخصم على أساس النقص عن هذه الساعات</small>
+                        </div>
                         <div class="col-md-6"><label class="form-label">رقم السيارة</label><input type="text" name="car_number" id="ef_car_number" class="form-control"></div>
                         <div class="col-md-6"><label class="form-label">رخصة القيادة</label><input type="text" name="car_license" id="ef_car_license" class="form-control"></div>
                         <div class="col-md-6"><label class="form-label">الرقم القومي</label><input type="text" name="national_id" id="ef_national_id" class="form-control"></div>
@@ -244,7 +263,9 @@ async function loadEmployees(page = 1) {
     }
     document.getElementById('employeesTable').innerHTML = data.map(e => `
         <tr>
-            <td><span class="fw-bold text-primary">${e.employee_code}</span></td>
+            <td><span class="fw-bold text-primary">${e.employee_code}</span>
+                ${e.is_custom_attendance ? '<br><small><span class="badge bg-info" title="حضور مخصص بالساعات"><i class="fas fa-stopwatch"></i> ساعات مرنة</span></small>' : ''}
+            </td>
             <td><strong>${e.name}</strong><br><small class="text-muted">${e.email??''}</small></td>
             <td><span class="badge-status ${typeBadge[e.employee_type]||'badge-draft'}">${e.employee_type_label || typeLabels[e.employee_type] || e.employee_type || '-'}</span></td>
             <td>${e.position}</td>
@@ -277,7 +298,10 @@ function openAddModal() {
     document.getElementById('ef_status').value = 'active';
     document.getElementById('ef_employee_type').value = 'employee';
     document.getElementById('ef_commission_rate').value = '';
+    document.getElementById('ef_custom_attendance').checked = false;
+    document.getElementById('ef_daily_hours').value = '';
     toggleCommissionRateField();
+    toggleCustomHours();
     document.getElementById('ef_password').required = true;
     document.getElementById('ef_password_confirmation').required = true;
     document.getElementById('passwordRequired').style.display = '';
@@ -311,6 +335,9 @@ async function openEditModal(id) {
     document.getElementById('ef_national_id').value = e.national_id ?? '';
     document.getElementById('ef_manager_id').value  = e.reporting_manager_id ?? e.manager_id ?? '';
     document.getElementById('ef_notes').value       = e.notes ?? '';
+    document.getElementById('ef_custom_attendance').checked = !!e.is_custom_attendance;
+    document.getElementById('ef_daily_hours').value = e.daily_required_hours ?? '';
+    toggleCustomHours();
     // Password optional in edit mode
     document.getElementById('ef_password').value = '';
     document.getElementById('ef_password_confirmation').value = '';
@@ -332,6 +359,14 @@ async function saveEmployee() {
     }
     if (data.manager_id) data.manager_id = parseInt(data.manager_id); else delete data.manager_id;
     delete data.is_manager;
+
+    // Custom attendance toggle + required hours
+    data.is_custom_attendance = document.getElementById('ef_custom_attendance').checked;
+    if (data.is_custom_attendance && data.daily_required_hours !== '' && data.daily_required_hours !== undefined) {
+        data.daily_required_hours = parseFloat(data.daily_required_hours);
+    } else {
+        data.daily_required_hours = null;
+    }
 
     const password = data.password;
     const passwordConfirmation = data.password_confirmation;
@@ -600,6 +635,12 @@ function toggleCommissionRateField() {
     if (type !== 'driver_representative') {
         // keep value if switching back, but optional clear is nicer for non-drivers
     }
+}
+
+function toggleCustomHours() {
+    const checked = document.getElementById('ef_custom_attendance').checked;
+    document.getElementById('customHoursGroup').style.display = checked ? '' : 'none';
+    if (!checked) document.getElementById('ef_daily_hours').value = '';
 }
 
 document.getElementById('ef_employee_type').addEventListener('change', toggleCommissionRateField);

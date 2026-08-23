@@ -70,4 +70,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/users', fn() => view('users.index'));
     Route::get('/financial-statement', fn() => view('financial-statement.index'));
     Route::get('/chat-groups', fn() => view('chat-groups.index'));
+
+    // Near-Expiry Items & Sales Incentives
+    Route::get('/near-expiry', fn() => view('near-expiry.index'));
 });

@@ -74,6 +74,10 @@ class RoleAndPermissionSeeder extends Seeder
             // Work locations
             ['name' => 'view_work_locations', 'group' => 'work_locations', 'description' => 'عرض مواقع العمل'],
 
+            // Near-expiry items & sales incentives
+            ['name' => 'view_near_expiry', 'group' => 'near_expiry', 'description' => 'عرض المنتجات قاربة الانتهاء وتسجيل المبيعات'],
+            ['name' => 'manage_near_expiry', 'group' => 'near_expiry', 'description' => 'إدارة المنتجات قاربة الانتهاء واعتماد المبيعات'],
+
             // Tab permissions
             ['name' => 'view_tab_permissions', 'group' => 'settings', 'description' => 'عرض صلاحيات التابات'],
 
@@ -104,6 +108,8 @@ class RoleAndPermissionSeeder extends Seeder
                 'manage_allowances',
                 'manage_incentives',
                 'manage_deductions',
+                'view_near_expiry',
+                'manage_near_expiry',
             ])->pluck('id');
 
             if ($teamFinancialPerms->isNotEmpty()) {

@@ -74,6 +74,7 @@ class UserController extends Controller
                 ['name' => 'view_chat_groups', 'label' => 'مجموعات الدردشة'],
                 ['name' => 'view_notifications', 'label' => 'الإشعارات'],
                 ['name' => 'view_reports', 'label' => 'التقارير'],
+                ['name' => 'view_near_expiry', 'label' => 'المنتجات قاربة الانتهاء'],
                 ['name' => 'view_work_locations', 'label' => 'مواقع العمل'],
                 ['name' => 'view_tab_permissions', 'label' => 'صلاحيات التابات'],
                 ['name' => 'view_users', 'label' => 'المستخدمين'],

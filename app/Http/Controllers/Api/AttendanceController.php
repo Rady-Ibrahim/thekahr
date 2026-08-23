@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Traits\RestrictToSubordinates;
 use App\Models\Attendance;
+use App\Models\AttendanceLog;
 use App\Models\AttendanceRequest;
 use App\Models\Employee;
 use App\Models\WorkLocation;
 use App\Services\AttendancePenaltyService;
+use App\Services\CustomAttendanceService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,11 +18,16 @@ use Illuminate\Support\Facades\Config;
 class AttendanceController
 {
     use RestrictToSubordinates;
-    public function __construct(private AttendancePenaltyService $penaltyService) {}
+    public function __construct(
+        private AttendancePenaltyService $penaltyService,
+        private ?CustomAttendanceService $customService = null,
+    ) {
+        $this->customService ??= app(CustomAttendanceService::class);
+    }
 
     public function index(Request $request): JsonResponse
     {
-        $query = Attendance::with(['employee', 'shift', 'employee.shiftAssignments.shift']);
+        $query = Attendance::with(['employee', 'shift', 'employee.shiftAssignments.shift'])->withCount('logs');
 
         if ($request->filled('employee_id')) $query->where('employee_id', $request->employee_id);
         if ($request->filled('status'))      $query->where('status', $request->status);
@@ -101,6 +108,40 @@ class AttendanceController
         $employee = Employee::findOrFail($validated['employee_id']);
         $date = Carbon::parse($attendanceDate);
 
+        // Custom-attendance employees: manual entry creates a completed session segment.
+        if ($employee->isCustomAttendance() && !empty($validated['check_in_time'])) {
+            $attendance = Attendance::firstOrCreate(
+                ['employee_id' => $employee->id, 'attendance_date' => $attendanceDate],
+                ['status' => 'present', 'required_hours' => $employee->requiredDailyHours()]
+            );
+
+            if ($validated['status'] === 'absent') {
+                $attendance->update(['status' => 'absent']);
+                $this->customService->recalculateDay($attendance->id);
+                return response()->json(['success' => true, 'message' => 'تم حفظ سجل الغياب', 'data' => $attendance->fresh('logs')], 201);
+            }
+
+            AttendanceLog::create([
+                'employee_id' => $employee->id,
+                'attendance_id' => $attendance->id,
+                'log_date' => $attendanceDate,
+                'check_in_time' => $validated['check_in_time'],
+                'check_out_time' => $validated['check_out_time'] ?? null,
+                'source' => 'admin',
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            $attendance->update(['status' => $validated['status']]);
+            $this->customService->recalculateDay($attendance->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حفظ جلسة الحضور وسيتم احتساب الخصم تلقائياً في المرتب',
+                'data' => $attendance->fresh(['employee', 'shift', 'logs']),
+                'summary' => $this->customService->todaySummary($employee),
+            ], 201);
+        }
+
         $record = Attendance::updateOrCreate(
             ['employee_id' => $validated['employee_id'], 'attendance_date' => $attendanceDate],
             [
@@ -121,6 +162,9 @@ class AttendanceController
                 'applied_late_deduction_type' => 'full_day',
                 'deduction_amount' => 0,
             ]);
+        } elseif ($employee->isCustomAttendance()) {
+            // No shift rules apply; keep aggregates from existing sessions.
+            $this->customService->recalculateDay($record->id);
         } else {
             $record = $this->penaltyService->processAttendance($record);
 
@@ -193,7 +237,12 @@ class AttendanceController
             'notes' => $validated['notes'] ?? $record->notes,
         ]);
 
-        if ($record->status !== 'absent') {
+        if ($record->status === 'absent') {
+            $record->update(['deduction_amount' => 0]);
+        } elseif ($record->employee?->isCustomAttendance()) {
+            // Aggregates live in attendance_logs; keep the daily record in sync.
+            $this->customService->recalculateDay($record->id);
+        } else {
             $record = $this->penaltyService->processAttendance($record);
 
             if ($record->check_in_time && $record->check_out_time) {
@@ -241,6 +290,42 @@ class AttendanceController
             'photo'       => 'nullable|image|max:3072',
         ]);
 
+        $employee = Employee::findOrFail($validated['employee_id']);
+
+        // ── Custom flexible attendance: sequential sessions per day ──
+        if ($employee->isCustomAttendance()) {
+            $photo = $request->hasFile('photo') ? $request->file('photo') : null;
+            $locationData = ($validated['latitude'] ?? null) !== null && ($validated['longitude'] ?? null) !== null
+                ? $this->detectLocation((float) $validated['latitude'], (float) $validated['longitude'])
+                : ['id' => null, 'name' => null, 'within' => false, 'distance' => null];
+
+            $result = $this->customService->startSession(
+                $employee,
+                [
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                    'photo' => $photo,
+                ],
+                $this->isAdminUser() ? 'admin' : 'mobile'
+            );
+
+            if (!$result['success']) {
+                return response()->json(['success' => false, 'message' => $result['message']], 422);
+            }
+
+            return response()->json([
+                'success'  => true,
+                'message'  => $result['message'],
+                'data'     => $result['session'],
+                'summary'  => array_merge($this->customService->todaySummary($employee), ['location' => $locationData]),
+                'location' => $locationData,
+                'shift'    => null,
+                'late_minutes' => 0,
+                'status'   => 'present',
+            ]);
+        }
+
+        // ── Standard shift-based attendance (unchanged behavior) ──
         $today  = today()->toDateString();
         $exists = Attendance::where('employee_id', $validated['employee_id'])
                             ->where('attendance_date', $today)
@@ -251,7 +336,6 @@ class AttendanceController
             return response()->json(['success' => false, 'message' => 'تم تسجيل الحضور مسبقاً لهذا اليوم'], 422);
         }
 
-        $employee = Employee::findOrFail($validated['employee_id']);
         $now = now();
         $date = Carbon::parse($today);
 
@@ -314,6 +398,36 @@ class AttendanceController
             'photo'       => 'nullable|image|max:3072',
         ]);
 
+        $employee = Employee::findOrFail($validated['employee_id']);
+
+        // ── Custom flexible attendance: close the open session & re-aggregate ──
+        if ($employee->isCustomAttendance()) {
+            $openSession = $this->customService->openSession($employee);
+
+            if (!$openSession) {
+                return response()->json(['success' => false, 'message' => 'لا توجد جلسة عمل مفتوحة لتسجيل الانصراف'], 422);
+            }
+
+            $result = $this->customService->endSession($openSession, [
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'photo' => $request->hasFile('photo') ? $request->file('photo') : null,
+            ]);
+
+            if (!$result['success']) {
+                return response()->json(['success' => false, 'message' => $result['message']], 422);
+            }
+
+            return response()->json([
+                'success'          => true,
+                'message'          => $result['message'],
+                'data'             => $openSession->fresh(),
+                'session_duration_minutes' => $result['session_duration_minutes'],
+                'summary'          => $result['summary'],
+            ]);
+        }
+
+        // ── Standard shift-based attendance (unchanged behavior) ──
         $today  = today()->toDateString();
         $record = Attendance::where('employee_id', $validated['employee_id'])
                             ->where('attendance_date', $today)
@@ -361,6 +475,147 @@ class AttendanceController
                 'deduction_amount' => $record->deduction_amount,
             ],
         ]);
+    }
+
+    /**
+     * Live punch summary for custom-attendance employees (current user by default).
+     */
+    public function customToday(Request $request): JsonResponse
+    {
+        $employee = $this->currentEmployee();
+
+        if ($request->filled('employee_id')) {
+            if (!$this->isAdminUser() && (int) $request->employee_id !== (int) $employee?->id) {
+                return response()->json(['success' => false, 'message' => 'غير مصرح بعرض بيانات موظف آخر'], 403);
+            }
+            $employee = Employee::findOrFail($request->employee_id);
+        }
+
+        if (!$employee) {
+            return response()->json(['success' => false, 'message' => 'لا يوجد ملف موظف مرتبط بحسابك'], 404);
+        }
+
+        if (!$employee->isCustomAttendance()) {
+            return response()->json(['success' => false, 'message' => 'هذا الموظف على نظام الورديات وليس الحضور المرن'], 422);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->customService->todaySummary($employee)]);
+    }
+
+    /**
+     * All check-in/check-out segments of a specific day.
+     */
+    public function daySessions($id): JsonResponse
+    {
+        $attendance = Attendance::with(['logs', 'employee', 'shift'])->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'attendance' => $attendance,
+                'sessions' => $attendance->logs->map(fn (AttendanceLog $log) => [
+                    'id' => $log->id,
+                    'check_in_time' => $log->check_in_time ? substr($log->check_in_time, 0, 5) : null,
+                    'check_out_time' => $log->check_out_time ? substr($log->check_out_time, 0, 5) : null,
+                    'duration_minutes' => $log->duration_minutes,
+                    'is_open' => $log->isOpen(),
+                    'source' => $log->source,
+                    'notes' => $log->notes,
+                ])->values(),
+                'totals' => [
+                    'total_worked_minutes' => $attendance->total_worked_minutes,
+                    'total_worked_hours' => $attendance->total_worked_hours,
+                    'required_hours' => $attendance->required_hours,
+                    'hours_status' => $attendance->hours_status,
+                    'deduction_amount' => $attendance->deduction_amount,
+                ],
+            ],
+        ]);
+    }
+
+    public function sessionStore(Request $request, $id): JsonResponse
+    {
+        if (!$this->isAdminUser()) {
+            return response()->json(['success' => false, 'message' => 'غير مصرح'], 403);
+        }
+
+        $attendance = Attendance::findOrFail($id);
+        $validated = $this->validateSessionPayload($request);
+
+        AttendanceLog::create([
+            'employee_id' => $attendance->employee_id,
+            'attendance_id' => $attendance->id,
+            'log_date' => $attendance->attendance_date->toDateString(),
+            'check_in_time' => $validated['check_in_time'],
+            'check_out_time' => $validated['check_out_time'] ?? null,
+            'source' => 'admin',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        $updated = $this->customService->recalculateDay($attendance->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تمت إضافة الجلسة وتحديث الإجماليات',
+            'data' => $updated?->load('logs'),
+        ], 201);
+    }
+
+    public function sessionUpdate(Request $request, $logId): JsonResponse
+    {
+        if (!$this->isAdminUser()) {
+            return response()->json(['success' => false, 'message' => 'غير مصرح'], 403);
+        }
+
+        $log = AttendanceLog::findOrFail($logId);
+        $validated = $this->validateSessionPayload($request, false);
+
+        $log->update(array_filter([
+            'check_in_time' => $validated['check_in_time'] ?? null,
+            'check_out_time' => array_key_exists('check_out_time', $validated) ? $validated['check_out_time'] : $log->check_out_time,
+            'notes' => $validated['notes'] ?? $log->notes,
+        ], fn ($v) => $v !== null));
+
+        // Recompute duration when both ends exist; clear it for re-opened sessions.
+        if (!$log->isOpen()) {
+            $duration = max(0, (int) $log->checkInAt()->diffInMinutes($log->checkOutAt()));
+            $log->update(['duration_minutes' => $duration]);
+        } else {
+            $log->update(['duration_minutes' => 0]);
+        }
+
+        $updated = $this->customService->recalculateDay($log->attendance_id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تحديث الجلسة وتحديث الإجماليات',
+            'data' => $updated?->load('logs'),
+        ]);
+    }
+
+    public function sessionDestroy($logId): JsonResponse
+    {
+        if (!$this->isAdminUser()) {
+            return response()->json(['success' => false, 'message' => 'غير مصرح'], 403);
+        }
+
+        $log = AttendanceLog::findOrFail($logId);
+        $attendanceId = $log->attendance_id;
+        $log->delete();
+        $this->customService->recalculateDay($attendanceId);
+
+        return response()->json(['success' => true, 'message' => 'تم حذف الجلسة وتحديث الإجماليات']);
+    }
+
+    private function validateSessionPayload(Request $request, bool $requireCheckIn = true): array
+    {
+        $rules = [
+            'check_in_time'  => [$requireCheckIn ? 'required' : 'sometimes', 'nullable', 'date_format:H:i'],
+            'check_out_time' => ['nullable', 'date_format:H:i'],
+            'notes'          => ['nullable', 'string'],
+        ];
+
+        return $request->validate($rules);
     }
 
     public function penaltyDetails($id): JsonResponse

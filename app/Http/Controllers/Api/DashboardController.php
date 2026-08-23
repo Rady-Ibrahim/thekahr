@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Models\Employee;
 use App\Models\Salary;
 use App\Models\Attendance;
+use App\Models\NearExpiryItem;
+use App\Models\NearExpirySale;
 
 class DashboardController
 {
@@ -38,6 +40,22 @@ class DashboardController
                     ->sum('net_salary'),
                 'pending_salaries' => Salary::where('status', 'pending_approval')->count(),
                 'paid_salaries' => Salary::where('status', 'paid')->count(),
+            ],
+
+            // Near-Expiry Items & Sales
+            'near_expiry' => [
+                'items_count' => NearExpiryItem::count(),
+                'expiring_soon' => NearExpiryItem::whereBetween('expiry_date', [
+                    now()->toDateString(), now()->addDays(30)->toDateString(),
+                ])->count(),
+                'month_sales_quantity' => (int) NearExpirySale::where('status', 'approved')
+                    ->where('month', now()->month)
+                    ->where('year', now()->year)
+                    ->sum('quantity_sold'),
+                'month_incentives_total' => (float) NearExpirySale::where('status', 'approved')
+                    ->where('month', now()->month)
+                    ->where('year', now()->year)
+                    ->sum('total_incentive'),
             ],
         ];
 

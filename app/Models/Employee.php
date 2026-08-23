@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\EmployeeSubRoleEnum;
 use App\Enums\EmployeeTypeEnum;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,7 @@ class Employee extends Model
         'user_id', 'employee_code', 'name', 'email', 'phone', 'phone_alternative',
         'national_id', 'date_of_birth', 'joining_date', 'position', 'department',
         'employee_type', 'sub_role', 'salary_type', 'base_salary', 'collection_commission_rate',
+        'is_custom_attendance', 'daily_required_hours',
         'status', 'car_license', 'car_number',
         'gps_device_id', 'reporting_manager_id', 'notes'
     ];
@@ -30,6 +32,8 @@ class Employee extends Model
         'date_of_birth' => 'date',
         'base_salary' => 'decimal:2',
         'collection_commission_rate' => 'decimal:2',
+        'is_custom_attendance' => 'boolean',
+        'daily_required_hours' => 'decimal:2',
         'employee_type' => EmployeeTypeEnum::class,
         'sub_role' => EmployeeSubRoleEnum::class,
     ];
@@ -75,6 +79,35 @@ class Employee extends Model
     public function isDriverRepresentative(): bool
     {
         return $this->employee_type === EmployeeTypeEnum::DRIVER_REPRESENTATIVE;
+    }
+
+    public function isCustomAttendance(): bool
+    {
+        return (bool) $this->is_custom_attendance;
+    }
+
+    public function requiredDailyHours(): float
+    {
+        return (float) ($this->daily_required_hours ?? config('hr.working_hours.daily_hours', 8));
+    }
+
+    public function hourlyRate(int $month = null, int $year = null): float
+    {
+        $month = $month ?? now()->month;
+        $year = $year ?? now()->year;
+
+        $workingDays = 0;
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
+            if (!$day->isWeekend()) $workingDays++;
+        }
+        if ($workingDays === 0) $workingDays = 30;
+
+        $dailyRate = (float) $this->base_salary / $workingDays;
+        $requiredHours = $this->requiredDailyHours();
+
+        return $requiredHours > 0 ? round($dailyRate / $requiredHours, 4) : 0.0;
     }
 
     public function user(): BelongsTo
@@ -147,6 +180,11 @@ class Employee extends Model
     public function points(): HasMany
     {
         return $this->hasMany(EmployeePoint::class);
+    }
+
+    public function nearExpirySales(): HasMany
+    {
+        return $this->hasMany(NearExpirySale::class);
     }
 
     public function shiftAssignments(): HasMany

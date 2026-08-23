@@ -63,6 +63,56 @@
     </div>
 </div>
 
+<!-- CUSTOM FLEXIBLE ATTENDANCE (نظام الحضور المخصص بالساعات) -->
+<div class="section-card mb-4" id="customPunchCard" style="display:none">
+    <div class="section-header">
+        <i class="fas fa-stopwatch text-info"></i>
+        <h5 class="section-title">البصمة المرنة — الحضور بالساعات</h5>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <select id="customEmpSelect" class="form-select form-select-sm" style="min-width:200px" onchange="loadCustomSummary()"></select>
+            <button class="btn btn-success btn-sm" id="btnCustomCheckIn" onclick="customPunch('in')"><i class="fas fa-fingerprint me-1"></i> حضور</button>
+            <button class="btn btn-danger btn-sm" id="btnCustomCheckOut" onclick="customPunch('out')"><i class="fas fa-sign-out-alt me-1"></i> انصراف</button>
+        </div>
+    </div>
+    <div class="section-body">
+        <div class="row g-3 align-items-center mb-3">
+            <div class="col-6 col-md-3">
+                <div class="stat-card text-center py-2">
+                    <div class="stat-value" id="custWorked">-</div>
+                    <div class="stat-label">ساعات اليوم</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card text-center py-2">
+                    <div class="stat-value text-primary" id="custRequired">-</div>
+                    <div class="stat-label">المطلوب يومياً</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card text-center py-2">
+                    <div class="stat-value text-warning" id="custRemaining">-</div>
+                    <div class="stat-label">المتبقي (دقيقة)</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card text-center py-2">
+                    <div class="stat-value" id="custOpenTimer" style="font-variant-numeric:tabular-nums">--:--:--</div>
+                    <div class="stat-label" id="custStatusLabel">الجلسة الحالية</div>
+                </div>
+            </div>
+        </div>
+        <div class="progress mb-3" style="height:10px">
+            <div class="progress-bar bg-info" id="custProgressBar" role="progressbar" style="width:0%"></div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="font-size:.85rem">
+                <thead class="table-light"><tr><th>#</th><th>حضور</th><th>انصراف</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
+                <tbody id="customSessionsTable"><tr><td colspan="6" class="text-center text-muted py-3">لا توجد جلسات اليوم</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- FILTERS -->
 <div class="section-card mb-4">
     <div class="section-body">
@@ -127,13 +177,14 @@
                         <th>انصراف مبكر</th>
                         <th>الخصم</th>
                         <th>ساعات العمل</th>
+                        <th>الساعات المرنة</th>
                         <th>الحالة</th>
                         <th>الموقع</th>
                         <th>إجراءات</th>
                     </tr>
                 </thead>
                 <tbody id="attTable">
-                    <tr><td colspan="12" class="text-center py-4"><div class="spinner mx-auto" style="width:30px;height:30px;border-width:3px"></div></td></tr>
+                    <tr><td colspan="13" class="text-center py-4"><div class="spinner mx-auto" style="width:30px;height:30px;border-width:3px"></div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -265,12 +316,228 @@
         </div>
     </div></div>
 </div>
+
+<!-- ═══ SESSIONS BREAKDOWN MODAL ═══ -->
+<div class="modal fade" id="sessionsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-layer-group me-2"></i> جلسات اليوم — <span id="sessionsEmpName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sessionsAttId">
+                <div class="row g-2 mb-3" id="sessionsTotals"></div>
+                <table class="data-table">
+                    <thead><tr><th>#</th><th>حضور</th><th>انصراف</th><th>المدة</th><th>المصدر</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+                    <tbody id="sessionsTableBody"></tbody>
+                </table>
+                <hr>
+                <div class="row g-2 align-items-end" id="addSessionForm">
+                    <div class="col-md-4"><label class="form-label">حضور</label><input type="time" id="ns_in" class="form-control"></div>
+                    <div class="col-md-4"><label class="form-label">انصراف</label><input type="time" id="ns_out" class="form-control"></div>
+                    <div class="col-md-3"><label class="form-label">ملاحظات</label><input type="text" id="ns_notes" class="form-control"></div>
+                    <div class="col-md-1"><button class="btn-primary-custom w-100" onclick="addSession()"><i class="fas fa-plus"></i></button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
 <script>
 const attBadge = { present:'badge-active', absent:'badge-rejected', late:'badge-pending', on_leave:'badge-approved' };
 const attLabel = { present:'حاضر', absent:'غائب', late:'متأخر', early_leave:'انصراف مبكر', on_leave:'إجازة', excused:'معذور' };
+const hoursStatusLabels = { fulfilled:'استكمل الساعات', shortfall:'نقص ساعات', overtime:'ساعات إضافية' };
+const hoursStatusBadges = { fulfilled:'badge-active', shortfall:'badge-rejected', overtime:'badge-approved' };
+function hoursStatusLabel(s) { return s ? (hoursStatusLabels[s] || s) : '-'; }
+function hoursStatusBadge(s) { return s ? (hoursStatusBadges[s] || 'badge-draft') : 'badge-draft'; }
+
+// ═══ CUSTOM FLEXIBLE ATTENDANCE WIDGET ══════════════════
+let customTimerInterval = null;
+let customEmployees = [];
+
+async function initCustomAttendance() {
+    // Load active employees into the picker; auto-detect current user's employee.
+    const r = await apiFetch('/employees?per_page=1000&status=active');
+    if (!r.success) return;
+    customEmployees = r.data?.data ?? [];
+
+    let meId = null;
+    try {
+        const me = await apiFetch('/auth/me');
+        if (me.success) meId = me.data?.employee?.id ?? null;
+    } catch (e) {}
+
+    const sel = document.getElementById('customEmpSelect');
+    const customOnly = customEmployees.filter(e => e.is_custom_attendance);
+    if (!customOnly.length) { document.getElementById('customPunchCard').style.display = 'none'; return; }
+
+    document.getElementById('customPunchCard').style.display = '';
+    sel.innerHTML = '<option value="">اختر الموظف</option>' + customOnly.map(e =>
+        `<option value="${e.id}">${e.name} (${e.employee_code})</option>`).join('');
+
+    const preselect = meId && customOnly.some(e => e.id === meId) ? meId : customOnly[0].id;
+    sel.value = String(preselect);
+    await loadCustomSummary();
+}
+
+function fmtMinutes(mins) {
+    mins = Math.max(0, Math.round(mins));
+    return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2,'0')}`;
+}
+
+async function loadCustomSummary() {
+    const empId = document.getElementById('customEmpSelect').value;
+    if (!empId) return;
+    stopCustomTimer();
+    document.getElementById('custOpenTimer').textContent = '--:--:--';
+    document.getElementById('custStatusLabel').textContent = 'الجلسة الحالية';
+
+    const r = await apiFetch('/attendance/custom/today?employee_id=' + empId);
+    if (!r.success) { showAlert(r.message || 'فشل تحميل الملخص', 'danger'); return; }
+    renderCustomSummary(r.data);
+}
+
+function renderCustomSummary(d) {
+    const workedH = Number(d.total_worked_hours ?? 0).toFixed(2);
+    document.getElementById('custWorked').textContent = `${workedH} س`;
+    document.getElementById('custRequired').textContent = `${Number(d.daily_required_hours ?? 0).toFixed(2)} س`;
+    document.getElementById('custRemaining').textContent = d.remaining_minutes ?? 0;
+
+    const pct = d.daily_required_hours > 0 ? Math.min(100, (Number(d.total_worked_hours ?? 0) / Number(d.daily_required_hours)) * 100) : 0;
+    document.getElementById('custProgressBar').style.width = pct.toFixed(1) + '%';
+    document.getElementById('custProgressBar').className = 'progress-bar ' +
+        (pct >= 100 ? 'bg-success' : pct >= 50 ? 'bg-info' : 'bg-warning');
+
+    const statusEl = document.getElementById('custStatusLabel');
+    statusEl.innerHTML = d.hours_status === 'fulfilled' ? '<span class="text-success">تم استيفاء الساعات ✓</span>'
+        : d.hours_status === 'overtime' ? `<span class="text-success">إضافي ${fmtMinutes(d.overtime_minutes ?? 0)}</span>`
+        : d.hours_status === 'shortfall' ? `<span class="text-danger">نقص ${fmtMinutes(d.remaining_minutes ?? 0)}${d.shortfall_deduction_amount > 0 ? ` (خصم ~${Number(d.shortfall_deduction_amount).toLocaleString()})` : ''}</span>`
+        : 'لم يسجل بعد';
+
+    // Open session → live timer
+    stopCustomTimer();
+    if (d.open_session) {
+        let elapsed = d.elapsed_open_session_minutes ?? 0;
+        const tickStart = Date.now();
+        const render = () => {
+            const totalSec = Math.floor(elapsed * 60) + Math.floor((Date.now() - tickStart) / 1000);
+            const h = String(Math.floor(totalSec / 3600)).padStart(2,'0');
+            const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2,'0');
+            const s = String(totalSec % 60).padStart(2,'0');
+            document.getElementById('custOpenTimer').textContent = `${h}:${m}:${s}`;
+            document.getElementById('custStatusLabel').innerHTML = '<span class="text-info"><i class="fas fa-circle-notch fa-spin"></i> جلسة جارية…</span>';
+        };
+        render();
+        customTimerInterval = setInterval(render, 1000);
+        document.getElementById('btnCustomCheckIn').disabled = true;
+        document.getElementById('btnCustomCheckOut').disabled = false;
+    } else {
+        document.getElementById('btnCustomCheckIn').disabled = false;
+        document.getElementById('btnCustomCheckOut').disabled = true;
+    }
+
+    // Sessions table
+    const rows = d.sessions ?? [];
+    document.getElementById('customSessionsTable').innerHTML = rows.length ? rows.map((s, i) => `
+        <tr>
+            <td>${i + 1}</td>
+            <td>${s.check_in_time ?? '-'}</td>
+            <td>${s.check_out_time ?? '-'}</td>
+            <td class="fw-bold">${s.duration_minutes ? fmtMinutes(s.duration_minutes) : (s.is_open ? '<span class="text-info">جارية</span>' : '-')}</td>
+            <td><small>${{ mobile:'تطبيق', admin:'إدارة', manual:'يدوي' }[s.source] ?? s.source ?? '-'}</small></td>
+            <td><small class="text-muted">${s.notes ?? ''}</small></td>
+        </tr>`).join('')
+        : '<tr><td colspan="6" class="text-center text-muted py-3">لا توجد جلسات اليوم</td></tr>';
+}
+
+function stopCustomTimer() {
+    if (customTimerInterval) { clearInterval(customTimerInterval); customTimerInterval = null; }
+}
+
+async function customPunch(type) {
+    const empId = document.getElementById('customEmpSelect').value;
+    if (!empId) { showAlert('اختر الموظف أولاً', 'warning'); return; }
+    const btn = type === 'in' ? document.getElementById('btnCustomCheckIn') : document.getElementById('btnCustomCheckOut');
+    btn.disabled = true;
+    const r = await apiFetch(`/attendance/check-${type}`, {
+        method: 'POST',
+        body: JSON.stringify({ employee_id: parseInt(empId) }),
+    });
+    if (!r.success) {
+        showAlert(r.message || 'فشل التسجيل', 'danger');
+        btn.disabled = false;
+        return;
+    }
+    showAlert(r.message);
+    await loadCustomSummary();
+}
+
+// ═══ SESSIONS BREAKDOWN MODAL ═══════════════════════════
+let sessionsAttId = null;
+
+async function openSessionsModal(attId) {
+    sessionsAttId = attId;
+    new bootstrap.Modal(document.getElementById('sessionsModal')).show();
+    await refreshSessionsModal();
+}
+
+async function refreshSessionsModal() {
+    const r = await apiFetch('/attendance/' + sessionsAttId + '/sessions');
+    if (!r.success) { showAlert(r.message || 'فشل التحميل', 'danger'); return; }
+    const { attendance, sessions, totals } = r.data;
+    document.getElementById('sessionsEmpName').textContent =
+        `${attendance.employee?.name ?? '-'} — ${(attendance.attendance_date ?? '').substring(0,10)}`;
+
+    const t = totals ?? {};
+    document.getElementById('sessionsTotals').innerHTML = [
+        ['المعمل به', `${Number(t.total_worked_hours ?? 0).toFixed(2)} س`, 'text-primary'],
+        ['المطلوب', t.required_hours != null ? `${Number(t.required_hours).toFixed(2)} س` : '-', ''],
+        ['الحالة', hoursStatusLabel(t.hours_status), t.hours_status === 'shortfall' ? 'text-danger' : t.hours_status === 'fulfilled' ? 'text-success' : ''],
+        ['الخصم', t.deduction_amount > 0 ? `- ${Number(t.deduction_amount).toLocaleString()} ج.م` : '-', t.deduction_amount > 0 ? 'text-danger fw-bold' : ''],
+    ].map(([label, val, cls]) => `
+        <div class="col-6 col-md-3"><div class="stat-card text-center py-2">
+            <div class="stat-value ${cls}" style="font-size:1.1rem">${val}</div>
+            <div class="stat-label">${label}</div>
+        </div></div>`).join('');
+
+    document.getElementById('sessionsTableBody').innerHTML = sessions.length ? sessions.map((s, i) => `
+        <tr>
+            <td>${i + 1}</td>
+            <td>${s.check_in_time ?? '-'}</td>
+            <td>${s.check_out_time ?? '-'}</td>
+            <td class="fw-bold">${s.duration_minutes ? fmtMinutes(s.duration_minutes) : (s.is_open ? '<span class="text-info">جارية</span>' : '-')}</td>
+            <td><small>${{ mobile:'تطبيق', admin:'إدارة', manual:'يدوي' }[s.source] ?? s.source ?? '-'}</small></td>
+            <td><small class="text-muted">${s.notes ?? '-'}</small></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSession(${s.id})" title="حذف الجلسة"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join('')
+        : '<tr><td colspan="7" class="text-center text-muted py-3">لا توجد جلسات مسجلة</td></tr>';
+}
+
+async function addSession() {
+    const body = {};
+    if (document.getElementById('ns_in').value) body.check_in_time = document.getElementById('ns_in').value;
+    if (document.getElementById('ns_out').value) body.check_out_time = document.getElementById('ns_out').value;
+    if (document.getElementById('ns_notes').value) body.notes = document.getElementById('ns_notes').value;
+    const r = await apiFetch(`/attendance/${sessionsAttId}/sessions`, { method: 'POST', body: JSON.stringify(body) });
+    if (!r.success) { showAlert(r.message || 'فشل الإضافة', 'danger'); return; }
+    ['ns_in','ns_out','ns_notes'].forEach(id => document.getElementById(id).value = '');
+    showAlert('تمت إضافة الجلسة');
+    await Promise.all([refreshSessionsModal(), loadCustomSummary(), loadAttendance()]);
+}
+
+async function deleteSession(logId) {
+    if (!confirm('حذف هذه الجلسة وإعادة حساب الإجماليات؟')) return;
+    const r = await apiFetch(`/attendance/sessions/${logId}`, { method: 'DELETE' });
+    if (!r.success) { showAlert(r.message || 'فشل الحذف', 'danger'); return; }
+    showAlert('تم حذف الجلسة');
+    await Promise.all([refreshSessionsModal(), loadCustomSummary(), loadAttendance()]);
+}
+
 const deductionLabels = {
     minutes: 'دقائق', quarter_day: 'ربع يوم', half_day: 'نصف يوم',
     full_day: 'يوم كامل', percentage: 'نسبة مئوية', fixed_amount: 'مبلغ ثابت'
@@ -356,7 +623,7 @@ async function loadAttendance(page = 1) {
     document.getElementById('attPagInfo').textContent = `إجمالي: ${data.total}`;
     const all = data.data;
     if (!all.length) {
-        document.getElementById('attTable').innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">لا توجد سجلات</td></tr>';
+        document.getElementById('attTable').innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">لا توجد سجلات</td></tr>';
         return;
     }
     document.getElementById('attTable').innerHTML = all.map(a => `
@@ -371,7 +638,10 @@ async function loadAttendance(page = 1) {
             <td>${a.salary_deduction_amount > 0
                 ? `<span class="fw-bold text-danger">-${Number(a.salary_deduction_amount).toLocaleString()} ج.م</span><br><small class="text-muted">${a.salary_deduction_label ?? ''}</small>`
                 : '-'}</td>
-            <td>${a.actual_worked_hours ? Number(a.actual_worked_hours).toFixed(2) : (a.working_hours ?? '-')}</td>
+            <td>${a.actual_worked_hours ? Number(a.actual_worked_hours).toFixed(2) : (a.working_hours ?? '-')}${(a.hours_status || a.logs_count > 0) ? `<br><small class="text-muted"><i class="fas fa-layer-group"></i> ${a.logs_count ?? 0} جلسة${a.required_hours ? ` / مطلوب ${Number(a.required_hours).toFixed(2)} س` : ''}</small>` : ''}</td>
+            <td>${a.hours_status
+                ? `<span class="badge-status ${hoursStatusBadge(a.hours_status)}">${hoursStatusLabel(a.hours_status)}</span><button class="btn btn-sm btn-outline-info d-block mt-1 w-100" onclick="openSessionsModal(${a.id})" title="عرض الجلسات"><i class="fas fa-list me-1"></i> الجلسات</button>`
+                : '<span class="text-muted">-</span>'}</td>
             <td><span class="badge-status ${attBadge[a.status] || 'badge-draft'}">${attLabel[a.status] || a.status}</span></td>
             <td>${a.check_in_latitude ? `<span class="badge bg-info"><i class="fas fa-map-marker-alt"></i> GPS</span>` : '-'}</td>
             <td>
@@ -569,7 +839,7 @@ async function loadTodayList(status) {
     document.getElementById('attPagInfo').textContent = `إجمالي اليوم: ${list.length}`;
     document.getElementById('attPagination').innerHTML = '';
     if (!list.length) {
-        document.getElementById('attTable').innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">لا توجد سجلات</td></tr>';
+        document.getElementById('attTable').innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">لا توجد سجلات</td></tr>';
         return;
     }
     document.getElementById('attTable').innerHTML = list.map(a => `
@@ -583,6 +853,7 @@ async function loadTodayList(status) {
             <td>-</td>
             <td>-</td>
             <td>-</td>
+            <td><span class="text-muted">-</span></td>
             <td><span class="badge-status ${attBadge[status] || 'badge-draft'}">${attLabel[status] || status}</span></td>
             <td>-</td>
             <td>-</td>
@@ -700,6 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTodaySummary();
     loadAttendance();
     loadShiftSelect();
+    initCustomAttendance();
 });
 </script>
 @endpush

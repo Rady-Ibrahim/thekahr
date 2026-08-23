@@ -236,18 +236,26 @@ class AttendancePenaltyService
         $penaltyDeduction = (float) $penaltyRecords->sum('deduction_amount');
         $lateMinutes = (int) $penaltyRecords->sum('late_minutes') + (int) $penaltyRecords->sum('early_exit_minutes');
 
+        // Custom flexible attendance: shortfall vs daily required hours is already
+        // stored per-day in deduction_amount by CustomAttendanceService::recalculateDay().
+        $shortfallDays = (int) $records->where('hours_status', 'shortfall')->count();
+        $shortfallAmount = round((float) $records->where('hours_status', 'shortfall')->sum('deduction_amount'), 2);
+
         $totalAmount = round($absentDeduction + $penaltyDeduction, 2);
 
         return [
             'amount' => $totalAmount,
             'label' => sprintf(
-                'خصم حضور: %d غياب، %d دقيقة تأخير/انصراف مبكر',
+                'خصم حضور: %d غياب، %d دقيقة تأخير/انصراف مبكر%s',
                 $absentDays,
-                $lateMinutes
+                $lateMinutes,
+                $shortfallDays > 0 ? sprintf('، نقص ساعات في %d يوم (%.2f)', $shortfallDays, $shortfallAmount) : ''
             ),
             'absent' => $absentDays,
             'half_days' => 0,
             'late_minutes' => $lateMinutes,
+            'custom_attendance_shortfall_days' => $shortfallDays,
+            'custom_attendance_shortfall_amount' => $shortfallAmount,
         ];
     }
 

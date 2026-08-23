@@ -89,6 +89,34 @@
     </div>
 </div>
 
+<!-- ==================== NEAR-EXPIRY SALES RANKING ==================== -->
+<div class="row g-3 mb-4" id="nearExpiryWidget" style="display:none">
+    <div class="col-md-4">
+        <div class="stat-card text-center h-100">
+            <div class="stat-icon mx-auto mb-2" style="background:#fff3e0;color:#e65100"><i class="fas fa-hourglass-half"></i></div>
+            <div class="stat-label mb-1">أصناف قاربة الانتهاء (30 يوم)</div>
+            <div class="stat-value text-warning" id="neExpiringSoon">-</div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="section-card h-100">
+            <div class="section-header d-flex align-items-center">
+                <i class="fas fa-trophy text-warning"></i>
+                <h5 class="section-title mb-0">أبطال مبيعات المنتجات قاربة الانتهاء - {{ date('n/Y') }}</h5>
+                <a href="/near-expiry" class="ms-auto small text-decoration-none">التفاصيل <i class="fas fa-arrow-left"></i></a>
+            </div>
+            <div class="table-responsive" style="max-height:260px;overflow-y:auto;">
+                <table class="data-table">
+                    <thead><tr><th>#</th><th>الموظف</th><th>وحدات</th><th>الحافز</th></tr></thead>
+                    <tbody id="neLeaderboardBody">
+                        <tr><td colspan="4" class="text-center py-3 text-muted">جارٍ التحميل...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('scripts')
@@ -97,7 +125,7 @@ let empChart, attChart;
 
 async function loadAll() {
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-EG');
-    await Promise.all([loadMetrics(), loadCharts()]);
+    await Promise.all([loadMetrics(), loadCharts(), loadNearExpiryWidget()]);
 }
 
 async function loadMetrics() {
@@ -117,6 +145,10 @@ async function loadMetrics() {
     document.getElementById('totalSalaryAmount').textContent = Number(d.payroll.total_salary_amount || 0).toLocaleString('ar-EG') + ' ج.م';
     document.getElementById('pendingSalaries').textContent   = d.payroll.pending_salaries;
     document.getElementById('paidSalaries').textContent      = d.payroll.paid_salaries;
+
+    if (d.near_expiry) {
+        document.getElementById('neExpiringSoon').textContent = d.near_expiry.expiring_soon ?? 0;
+    }
 }
 
 async function loadCharts() {
@@ -124,7 +156,6 @@ async function loadCharts() {
         apiFetch('/dashboard/employees-chart'),
         apiFetch('/dashboard/attendance-chart'),
     ]);
-
     // Employee chart
     if (empR.success) {
         const d = empR.data;
@@ -151,6 +182,30 @@ async function loadCharts() {
             },
             options: { plugins: { legend: { position: 'bottom', labels: { font: { family: 'Cairo' } } } } }
         });
+    }
+}
+
+async function loadNearExpiryWidget() {
+    try {
+        const res = await apiFetch('/near-expiry-sales/leaderboard?limit=5');
+        if (!res.success) return;
+
+        const rows = res.data || [];
+        const widget = document.getElementById('nearExpiryWidget');
+        if (!rows.length) { widget.style.display = 'none'; return; }
+        widget.style.display = '';
+
+        const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+        document.getElementById('neLeaderboardBody').innerHTML = rows.map(l => `
+            <tr ${res.my_rank && res.my_rank.rank === l.rank ? 'style="background:#eef2ff"' : ''}>
+                <td><span class="rank-medal">${medals[l.rank] || l.rank}</span></td>
+                <td><strong>${escapeHtml(l.employee_name)}</strong>
+                    <div class="text-muted" style="font-size:.72rem">${escapeHtml(l.position || '')}</div></td>
+                <td>${l.total_quantity}</td>
+                <td class="fw-bold text-success">${Number(l.total_incentive).toLocaleString()} ج.م</td>
+            </tr>`).join('');
+    } catch (e) {
+        document.getElementById('nearExpiryWidget').style.display = 'none';
     }
 }
 

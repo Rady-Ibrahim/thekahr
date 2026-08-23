@@ -1019,6 +1019,11 @@
                     <span class="icon"><i class="fas fa-chart-bar"></i></span> التقارير
                 </a>
             @endif
+            @if ($hasP('view_near_expiry'))
+                <a href="/near-expiry" class="nav-link {{ request()->is('near-expiry*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-hourglass-half"></i></span> المنتجات قاربة الانتهاء
+                </a>
+            @endif
             @if ($hasP('view_work_locations'))
                 <a href="/locations" class="nav-link {{ request()->is('locations*') ? 'active' : '' }}">
                     <span class="icon"><i class="fas fa-map-marker-alt"></i></span> مواقع العمل
