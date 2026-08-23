@@ -15,5 +15,9 @@ class DatabaseSeeder extends Seeder
             DepartmentSeeder::class,
             ShiftSeeder::class,
         ]);
+
+        if (env('SEED_MEDICAL_FRESH', false)) {
+            $this->call(MedicalSystemFreshSeeder::class);
+        }
     }
 }
