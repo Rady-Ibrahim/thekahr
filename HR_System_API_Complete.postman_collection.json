@@ -1,0 +1,3318 @@
+{
+  "info": {
+    "_postman_id": "hr-system-complete-v2",
+    "name": "HR & Operations Management System - Complete API",
+    "description": "مجموعة كاملة ومنظمة لواجهة برمجة تطبيقات نظام الموارد البشرية والتشغيل - جاهزة للاختبار على Postman",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost/mphamedhr/public/api",
+      "type": "string"
+    },
+    {
+      "key": "TOKEN",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{TOKEN}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "description": "نقاط النهاية الخاصة بالمصادقة: تسجيل الدخول، معلومات المستخدم، تغيير كلمة المرور وتسجيل الخروج.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) { const r = pm.response.json(); if (r.success && r.token) pm.collectionVariables.set('TOKEN', r.token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "url": "{{BASE_URL}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"admin@example.com\",\"password\":\"password\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Me (Current User)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/auth/me"
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/auth/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"New Name\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/auth/change-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"current_password\":\"password\",\"new_password\":\"newpassword\",\"new_password_confirmation\":\"newpassword\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard",
+      "description": "نقاط النهاية لعرض المقاييس والرسوم البيانية (KPIs).",
+      "item": [
+        {
+          "name": "Metrics (All KPIs)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/metrics"
+          }
+        },
+        {
+          "name": "Employees Chart",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/employees-chart"
+          }
+        },
+        {
+          "name": "Requests Chart",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/requests-chart"
+          }
+        },
+        {
+          "name": "Attendance Chart",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/attendance-chart"
+          }
+        },
+        {
+          "name": "Collections Chart (12 months)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/collections-chart"
+          }
+        },
+        {
+          "name": "Performance Metrics (Top Drivers)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/dashboard/performance-metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Employees",
+      "description": "إدارة الموظفين: إنشاء، تعديل، حذف وعرض السجلات وتواريخ الانضمام والرواتب والحضور.",
+      "item": [
+        {
+          "name": "List Employees",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/employees?page=1&per_page=15&search=&status=active&department=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "employees"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                },
+                {
+                  "key": "department",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_code\": \"EMP001\",\n  \"name\": \"أحمد محمد\",\n  \"phone\": \"01012345678\",\n  \"email\": \"ahmed@example.com\",\n  \"position\": \"مندوب مبيعات\",\n  \"department\": \"المبيعات\",\n  \"joining_date\": \"2024-01-01\",\n  \"base_salary\": 5000,\n  \"status\": \"active\",\n  \"car_number\": \"أ ب ج 1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Employee",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employees/1"
+          }
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/employees/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"أحمد محمد علي\",\n  \"base_salary\": 5500,\n  \"position\": \"مشرف مبيعات\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Employee",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/employees/1"
+          }
+        },
+        {
+          "name": "Update Status",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/employees/1/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"inactive\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Salary History",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employees/1/salary-history"
+          }
+        },
+        {
+          "name": "Attendance Records",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/employees/1/attendance?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "employees",
+                "1",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏪 Customers",
+      "description": "إدارة العملاء: إنشاء، تعديل، حذف وتعيين الموظفين للعملاء.",
+      "item": [
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/customers?page=1&per_page=15&search=&is_active=1",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "is_active",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"محل الأمانة\",\n  \"phone\": \"01098765432\",\n  \"email\": \"amanah@example.com\",\n  \"address\": \"القاهرة، مدينة نصر\",\n  \"credit_limit\": 10000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Customer",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/customers/1"
+          }
+        },
+        {
+          "name": "Update Customer",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/customers/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"credit_limit\": 15000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/customers/1"
+          }
+        },
+        {
+          "name": "Customer Requests",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/customers/1/requests"
+          }
+        },
+        {
+          "name": "Assign Employee to Customer",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/customers/1/assign-employee",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"employee_id\": 1}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove Employee from Customer",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/customers/1/remove-employee/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏭 Warehouses",
+      "description": "إدارة المخازن والعناصر المتعلقة بالمخزن.",
+      "item": [
+        {
+          "name": "List Warehouses",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/warehouses"
+          }
+        },
+        {
+          "name": "Create Warehouse",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/warehouses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"المخزن الرئيسي\",\n  \"location\": \"القاهرة، الزيتون\",\n  \"description\": \"المخزن الرئيسي للمنتجات\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Warehouse",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/warehouses/1"
+          }
+        },
+        {
+          "name": "Update Warehouse",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/warehouses/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"المخزن الرئيسي المحدث\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Warehouse",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/warehouses/1"
+          }
+        },
+        {
+          "name": "Warehouse Items",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/warehouses/1/items"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Items",
+      "description": "إدارة الأصناف: الفئات، الأسعار، المخزون والوحدات.",
+      "item": [
+        {
+          "name": "Item Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/items/categories"
+          }
+        },
+        {
+          "name": "List Items",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/items?page=1&per_page=15&search=&category=&warehouse_id=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "items"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "category",
+                  "value": ""
+                },
+                {
+                  "key": "warehouse_id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Item",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_code\": \"ITM001\",\n  \"name\": \"زيت نخيل\",\n  \"category\": \"زيوت\",\n  \"unit_price\": 25.50,\n  \"unit\": \"لتر\",\n  \"warehouse_id\": 1,\n  \"is_available\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Item",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/items/1"
+          }
+        },
+        {
+          "name": "Update Item",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/items/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"unit_price\": 27.00}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Item",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/items/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Requests",
+      "description": "نقاط لإنشاء وإدارة طلبات السحب والتسليم واعتمادها.",
+      "item": [
+        {
+          "name": "Prepaid Request",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/prepaid",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customer_id\":1}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "My Requests",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/requests/my"
+          }
+        },
+        {
+          "name": "Received Pending",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/requests/received/pending"
+          }
+        },
+        {
+          "name": "Reviewer Pending",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/requests/reviewer/pending"
+          }
+        },
+        {
+          "name": "Manager Pending",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/requests/manager/pending"
+          }
+        },
+        {
+          "name": "List Requests",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/requests?page=1&per_page=15&status=&customer_id=&employee_id=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "requests"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "customer_id",
+                  "value": ""
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Request",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"employee_id\": 1,\n  \"warehouse_id\": 1,\n  \"delivery_date\": \"2025-07-01\",\n  \"notes\": \"طلب عاجل\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Request",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/requests/1"
+          }
+        },
+        {
+          "name": "Update Request",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/requests/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"ملاحظات محدثة\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Request",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/requests/1"
+          }
+        },
+        {
+          "name": "Add Items to Request",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\"item_id\": 1, \"quantity\": 10, \"unit_price\": 25.50},\n    {\"item_id\": 2, \"quantity\": 5, \"unit_price\": 30.00}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit for Review",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/submit-for-review"
+          }
+        },
+        {
+          "name": "Submit Reviewer Review",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/submit-reviewer-review"
+          }
+        },
+        {
+          "name": "Transfer To Employee",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/transfer-to-employee",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"employee_id\":2}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reviewer Approve",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/reviewer-approve"
+          }
+        },
+        {
+          "name": "Reviewer Reject",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/reviewer-reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"Not available\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Submit Manager Review",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/submit-manager-review"
+          }
+        },
+        {
+          "name": "Manager Approve",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/manager-approve"
+          }
+        },
+        {
+          "name": "Manager Reject",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/manager-reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"Rejected\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve Request",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"تم الاعتماد\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Request",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/requests/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"الأصناف غير متوفرة\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🗺️ Routes (خطوط السير)",
+      "description": "إدارة خطوط السير اليومية وتعريفها.",
+      "item": [
+        {
+          "name": "Daily Routes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/routes/daily?date=2025-06-24",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "routes",
+                "daily"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2025-06-24"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Route With Stops",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/with-stops",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Route A\",\"stops\":[]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Route Stops",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/routes/1/stops"
+          }
+        },
+        {
+          "name": "Update Route With Stops",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/routes/1/with-stops",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"stops\":[]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dispatch Route",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/1/dispatch",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Delivery For Route",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/1/deliveries",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"request_id\":1}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Odometer Start",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/1/odometer-start",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"value\":1000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Odometer End",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/1/odometer-end",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"value\":1500}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Odometer Verify",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes/1/odometer-verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Routes",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/routes"
+          }
+        },
+        {
+          "name": "Create Route",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/routes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"خط القاهرة الشرقية\",\n  \"start_area\": \"العباسية\",\n  \"end_area\": \"مدينة نصر\",\n  \"description\": \"خط التوزيع اليومي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Route",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/routes/1"
+          }
+        },
+        {
+          "name": "Update Route",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/routes/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"خط القاهرة الشرقية المحدث\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Route",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/routes/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚚 Deliveries",
+      "description": "متابعة عمليات التوصيل، رفع إثباتات التسليم، وتتبع GPS.",
+      "item": [
+        {
+          "name": "My Deliveries (Driver)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/deliveries/my"
+          }
+        },
+        {
+          "name": "List Deliveries",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/deliveries?page=1&per_page=15&status=&date=&route_id=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "deliveries"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "date",
+                  "value": ""
+                },
+                {
+                  "key": "route_id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Delivery",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deliveries",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": 1,\n  \"driver_id\": 1,\n  \"route_id\": 1,\n  \"delivery_date\": \"2025-06-24\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Delivery",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/deliveries/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"Updated\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Delivery",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/deliveries/1"
+          }
+        },
+        {
+          "name": "Complete With Collection",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deliveries/1/complete-with-collection",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"collection\":{}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Delivery",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/deliveries/1"
+          }
+        },
+        {
+          "name": "Update Status",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/deliveries/1/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"notes\": \"تم التسليم بنجاح\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Upload Proof (multipart)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deliveries/1/proof",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof_image",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "notes",
+                  "value": "إثبات التسليم",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add GPS Tracking",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deliveries/1/tracking",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 30.0444,\n  \"longitude\": 31.2357,\n  \"status\": \"in_progress\",\n  \"recorded_at\": \"2025-06-24T10:30:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get GPS Tracking",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/deliveries/1/tracking"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Collections",
+      "description": "إدارة تحصيلات السائقين وتلخيصات المحصلين اليومية والشهرية.",
+      "item": [
+        {
+          "name": "Daily Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/collections/daily-summary?date=2025-06-24",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "collections",
+                "daily-summary"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2025-06-24"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Driver Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/collections/driver/1/summary?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "collections",
+                "driver",
+                "1",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Collections",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/collections?page=1&per_page=15&status=&payment_method=&date=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "collections"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "payment_method",
+                  "value": ""
+                },
+                {
+                  "key": "date",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Collection",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/collections",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_id\": 1,\n  \"driver_id\": 1,\n  \"amount\": 1500.00,\n  \"payment_method\": \"cash\",\n  \"collection_date\": \"2025-06-24\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Collection",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/collections/1"
+          }
+        },
+        {
+          "name": "Approve Collection",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/collections/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"تم التحقق\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Collection",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/collections/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"خطأ في المبلغ\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⏰ Attendance",
+      "description": "حضور الموظفين: تسجيل الحضور والانصراف، طلبات الإجازة والتقارير الشهرية.",
+      "item": [
+        {
+          "name": "Today Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/attendance/today-summary"
+          }
+        },
+        {
+          "name": "My Records (Employee)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/attendance/my-records?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "attendance",
+                "my-records"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Leave Requests (All)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/attendance/leave-requests"
+          }
+        },
+        {
+          "name": "Monthly Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/attendance/monthly-report/1?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "attendance",
+                "monthly-report",
+                "1"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Attendance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/attendance?page=1&per_page=20&status=&date_from=&date_to=&search=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check In (GPS)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/attendance/check-in",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 30.0444,\n  \"longitude\": 31.2357,\n  \"check_in_time\": \"08:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Penalty Details",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/attendance/1/penalty-details"
+          }
+        },
+        {
+          "name": "Check Out (GPS)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/attendance/check-out",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 30.0444,\n  \"longitude\": 31.2357,\n  \"check_out_time\": \"17:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Request Leave",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/attendance/request-leave",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type\": \"annual\",\n  \"start_date\": \"2025-07-01\",\n  \"end_date\": \"2025-07-05\",\n  \"reason\": \"إجازة سنوية\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve Leave",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/attendance/leave-requests/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"approved\",\"notes\":\"تم الاعتماد\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ Incentives",
+      "description": "إدارة الحوافز: إضافة، اعتماد ورفض الحوافز الشهرية.",
+      "item": [
+        {
+          "name": "List Incentives",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/incentives?page=1&per_page=15&employee_id=&month=&year=&status=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "incentives"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                },
+                {
+                  "key": "month",
+                  "value": ""
+                },
+                {
+                  "key": "year",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Incentive",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/incentives",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"incentive_type\": \"performance\",\n  \"amount\": 500,\n  \"month\": 6,\n  \"year\": 2025,\n  \"reason\": \"أداء ممتاز في شهر يونيو\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Incentive",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/incentives/1"
+          }
+        },
+        {
+          "name": "Update Incentive",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/incentives/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 600}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Incentive",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/incentives/1"
+          }
+        },
+        {
+          "name": "Approve Incentive",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/incentives/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"تم الاعتماد\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Incentive",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/incentives/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"غير مستحق\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "➖ Deductions",
+      "description": "خصومات الموظفين وإدارتها وعمليات الاعتماد والرفض.",
+      "item": [
+        {
+          "name": "List Deductions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/deductions?page=1&per_page=15&employee_id=&month=&year=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "deductions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                },
+                {
+                  "key": "month",
+                  "value": ""
+                },
+                {
+                  "key": "year",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Deduction",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deductions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"deduction_type\": \"absence\",\n  \"amount\": 200,\n  \"month\": 6,\n  \"year\": 2025,\n  \"reason\": \"غياب بدون إذن\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Deduction",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/deductions/1"
+          }
+        },
+        {
+          "name": "Delete Deduction",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/deductions/1"
+          }
+        },
+        {
+          "name": "Approve Deduction",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deductions/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Deduction",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/deductions/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"خطأ في الحساب\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💵 Advances (السلف)",
+      "description": "طلبات السلفة، الاعتماد والرفض وملخصات السلف لكل موظف.",
+      "item": [
+        {
+          "name": "Employee Advance Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/advances/employee/1/summary"
+          }
+        },
+        {
+          "name": "List Advances",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/advances?page=1&per_page=15&employee_id=&status=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "advances"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Advance",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/advances",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"amount\": 2000,\n  \"installments\": 4,\n  \"reason\": \"ظروف طارئة\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Advance",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/advances/1"
+          }
+        },
+        {
+          "name": "Approve Advance",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/advances/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Advance",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/advances/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"تجاوز الحد المسموح\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎁 Allowances (البدلات)",
+      "description": "إدارة البدلات الشهرية والمتكررة لكل موظف.",
+      "item": [
+        {
+          "name": "Employee Allowances",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/allowances/employee/1"
+          }
+        },
+        {
+          "name": "List Allowances",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/allowances"
+          }
+        },
+        {
+          "name": "Create Allowance",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/allowances",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"allowance_type\": \"transport\",\n  \"amount\": 300,\n  \"frequency\": \"monthly\",\n  \"is_recurring\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Allowance",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/allowances/1"
+          }
+        },
+        {
+          "name": "Update Allowance",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/allowances/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 350}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Allowance",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/allowances/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💹 Commissions (العمولات)",
+      "description": "حساب وإدارة العمولات الشهرية وموجزات الأداء.",
+      "item": [
+        {
+          "name": "Monthly Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/commissions/monthly-summary?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "commissions",
+                "monthly-summary"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Commissions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/commissions?page=1&per_page=15&employee_id=&month=&year=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "commissions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                },
+                {
+                  "key": "month",
+                  "value": ""
+                },
+                {
+                  "key": "year",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Commission",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/commissions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"sales_amount\": 50000,\n  \"commission_rate\": 2.5,\n  \"month\": 6,\n  \"year\": 2025\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Commission",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/commissions/1"
+          }
+        },
+        {
+          "name": "Delete Commission",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/commissions/1"
+          }
+        },
+        {
+          "name": "Approve Commission",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/commissions/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Commission",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/commissions/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"بيانات غير صحيحة\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚗 Car Violations",
+      "description": "سجل مخالفات السيارات للموظفين وعمليات الإعفاء.",
+      "item": [
+        {
+          "name": "Employee Violations Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/car-violations/employee/1/summary"
+          }
+        },
+        {
+          "name": "List Car Violations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/car-violations?page=1&per_page=15&employee_id=&is_waived=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "car-violations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "employee_id",
+                  "value": ""
+                },
+                {
+                  "key": "is_waived",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Violation",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/car-violations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"violation_type\": \"speeding\",\n  \"amount\": 500,\n  \"violation_date\": \"2025-06-20\",\n  \"car_number\": \"أ ب ج 1234\",\n  \"notes\": \"مخالفة سرعة على طريق الأوتوستراد\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Violation",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/car-violations/1"
+          }
+        },
+        {
+          "name": "Update Violation",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/car-violations/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\": 600}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Waive Violation",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/car-violations/1/waive",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"إعفاء لأول مرة\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Salaries",
+      "description": "حساب الرواتب، الاعتماد، والدفع الشهري.",
+      "item": [
+        {
+          "name": "Monthly Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/salaries/monthly-summary?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "salaries",
+                "monthly-summary"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Calculate All Salaries",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/salaries/calculate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 6,\n  \"year\": 2025,\n  \"employee_ids\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Bulk Approve Salaries",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/salaries/bulk-approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"salary_ids\": [1, 2, 3]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Calculate Single Employee Salary",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/salaries/employee/1/calculate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 6,\n  \"year\": 2025\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Salaries",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/salaries?page=1&per_page=15&month=6&year=2025&status=&search=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "salaries"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Salary Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/salaries/1"
+          }
+        },
+        {
+          "name": "Approve Salary",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/salaries/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Pay Salary",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/salaries/1/pay",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_method\": \"bank_transfer\",\n  \"payment_date\": \"2025-06-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "✅ Approvals",
+      "description": "واجهة عامة للاعتمادات المعلقة وتاريخ الاعتمادات.",
+      "item": [
+        {
+          "name": "Pending Items (All Types)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/approvals/pending"
+          }
+        },
+        {
+          "name": "Approval History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/approvals/history?page=1&per_page=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "approvals",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Item",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/approvals/1/approve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"notes\":\"تم الاعتماد\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Item",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/approvals/1/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"سبب الرفض\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📈 Reports",
+      "description": "توليد تقارير عن الموظفين، الحضور، الطلبات، التحصيلات والرواتب.",
+      "item": [
+        {
+          "name": "Employees Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/employees?department=&status=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "employees"
+              ],
+              "query": [
+                {
+                  "key": "department",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Attendance Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/attendance?month=6&year=2025&date_from=&date_to=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                },
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Requests Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/requests?month=6&year=2025&status=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "requests"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Collections Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/collections?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "collections"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Salaries Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/salaries?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "salaries"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Performance Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/performance?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "performance"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Incentives Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/incentives?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "incentives"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Monthly Admin Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/reports/monthly-summary?month=6&year=2025",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "reports",
+                "monthly-summary"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "6"
+                },
+                {
+                  "key": "year",
+                  "value": "2025"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 Notifications",
+      "description": "إدارة الإشعارات: تعداد غير المقروءة، ووسائل تعليمية لقراءة/حذف/إرسال الإشعارات.",
+      "item": [
+        {
+          "name": "Unread Count",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/notifications/unread-count"
+          }
+        },
+        {
+          "name": "Mark All as Read",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/notifications/read-all"
+          }
+        },
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/notifications?page=1&per_page=20&is_read=",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "is_read",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark as Read",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/notifications/1/read"
+          }
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/notifications/1"
+          }
+        },
+        {
+          "name": "Send Notification",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/notifications/send",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": 1,\n  \"title\": \"اختبار\",\n  \"message\": \"نص الاختبار\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏷️ Departments",
+      "description": "قائمة الإدارات.",
+      "item": [
+        {
+          "name": "List Departments",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/departments"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📱 Client Devices",
+      "description": "تسجيل وحذف أجهزة العملاء (device tokens).",
+      "item": [
+        {
+          "name": "Register Device",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/client-devices",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"token\":\"abc\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Device",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/client-devices"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Financials",
+      "description": "معاملات المستخدم المالية (Mobile).",
+      "item": [
+        {
+          "name": "My Financials",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/me/financials"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧾 Employee Tabs",
+      "description": "صلاحيات التبويبات للموظفين.",
+      "item": [
+        {
+          "name": "My Tabs (mobile)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/me/tabs"
+          }
+        },
+        {
+          "name": "List Employee Tabs (admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-tabs"
+          }
+        },
+        {
+          "name": "Available Tabs",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-tabs/available"
+          }
+        },
+        {
+          "name": "Get Tabs By ID",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-tabs/1"
+          }
+        },
+        {
+          "name": "Save Tabs (POST to id)",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/employee-tabs/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"tabs\": [\"dashboard\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Tabs",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/employee-tabs/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ Employee Points",
+      "description": "نقاط الموظفين وملف النقاط الخاص بالمستخدم.",
+      "item": [
+        {
+          "name": "My Points",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/me/points"
+          }
+        },
+        {
+          "name": "List Employee Points",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-points"
+          }
+        },
+        {
+          "name": "Create Employee Point",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/employee-points",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"employee_id\":1,\"points\":10}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Employee Point",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-points/1"
+          }
+        },
+        {
+          "name": "Delete Employee Point",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/employee-points/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💬 Messages",
+      "description": "رسائل الموظفين والمحادثات.",
+      "item": [
+        {
+          "name": "Unread Count",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/messages/unread-count"
+          }
+        },
+        {
+          "name": "Conversations",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/messages"
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"to_employee_id\":1,\"message\":\"Hi\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Conversation With Employee",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/messages/1"
+          }
+        },
+        {
+          "name": "Mark Conversation Read",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/messages/1/read"
+          }
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/messages/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Chat Groups",
+      "description": "إدارة مجموعات الدردشة وعضوياتها.",
+      "item": [
+        {
+          "name": "My Groups",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/chat-groups/my"
+          }
+        },
+        {
+          "name": "List Chat Groups",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/chat-groups"
+          }
+        },
+        {
+          "name": "Create Chat Group",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/chat-groups",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Group1\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Chat Group",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/chat-groups/1"
+          }
+        },
+        {
+          "name": "Update Chat Group",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/chat-groups/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Chat Group",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/chat-groups/1"
+          }
+        },
+        {
+          "name": "Add Members",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/chat-groups/1/members",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"members\":[1,2]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/chat-groups/1/members/1"
+          }
+        },
+        {
+          "name": "Update Member Role",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/chat-groups/1/members/1/role",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"role\":\"admin\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Group Messages",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/chat-groups/1/messages"
+          }
+        },
+        {
+          "name": "Mark Group Read",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/chat-groups/1/read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏷️ Customer Expected Amounts",
+      "description": "متابعة مبالغ التوقعات للعملاء.",
+      "item": [
+        {
+          "name": "Create Expected Amount",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/customer-expected-amounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"customer_id\":1,\"amount\":1000}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Expected Amount",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/customer-expected-amounts/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\":1200}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Expected Amount",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/customer-expected-amounts/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "⏱️ Shifts",
+      "description": "تعريف الشفتات وإدارتها.",
+      "item": [
+        {
+          "name": "List Shifts",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/shifts"
+          }
+        },
+        {
+          "name": "Create Shift",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/shifts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Morning\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Shift",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/shifts/1"
+          }
+        },
+        {
+          "name": "Update Shift",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/shifts/1"
+          }
+        },
+        {
+          "name": "Delete Shift",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/shifts/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔁 Employee Shifts",
+      "description": "تعيينات الشفتات للموظفين.",
+      "item": [
+        {
+          "name": "List Employee Shifts",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-shifts"
+          }
+        },
+        {
+          "name": "Create Employee Shift",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/employee-shifts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"employee_id\":1,\"shift_id\":1}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Bulk Create",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/employee-shifts/bulk"
+          }
+        },
+        {
+          "name": "Current Shift For Employee",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/employee-shifts/current/1"
+          }
+        },
+        {
+          "name": "Delete Employee Shift",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/employee-shifts/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📍 Work Locations",
+      "description": "مواقع العمل وإدارتها.",
+      "item": [
+        {
+          "name": "List Work Locations",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/work-locations"
+          }
+        },
+        {
+          "name": "Create Work Location",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/work-locations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Office A\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Work Location",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/work-locations/1"
+          }
+        },
+        {
+          "name": "Update Work Location",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/work-locations/1"
+          }
+        },
+        {
+          "name": "Delete Work Location",
+          "request": {
+            "method": "DELETE",
+            "url": "{{BASE_URL}}/work-locations/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Users",
+      "description": "إدارة المستخدمين وصلاحياتهم.",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/users"
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "url": "{{BASE_URL}}/users",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"API User\",\"email\":\"api@example.com\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "User Roles",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/users/roles"
+          }
+        },
+        {
+          "name": "Sidebar Permissions",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/users/sidebar-permissions"
+          }
+        },
+        {
+          "name": "All Permissions",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/users/all-permissions"
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "url": "{{BASE_URL}}/users/1"
+          }
+        },
+        {
+          "name": "Update User Permissions",
+          "request": {
+            "method": "PUT",
+            "url": "{{BASE_URL}}/users/1/permissions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"permissions\":[]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

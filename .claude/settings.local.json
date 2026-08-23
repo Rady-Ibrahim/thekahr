@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(php -r \"echo file_get_contents\\('C:\\\\\\\\wamp6\\\\\\\\www\\\\\\\\mphamedhr\\\\\\\\routes\\\\\\\\api.php'\\);\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('C:\\\\\\\\\\\\\\\\wamp6\\\\\\\\\\\\\\\\www\\\\\\\\\\\\\\\\mphamedhr\\\\\\\\\\\\\\\\HR_System_API_Complete.postman_collection.json'\\)\\); total=sum\\(len\\(g['item']\\) for g in d['item']\\); print\\(f'Groups: {len\\(d[\\\\\"item\\\\\"]\\)}, Endpoints: {total}'\\)\")"
+    ]
+  }
+}

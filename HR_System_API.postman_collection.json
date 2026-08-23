@@ -1,0 +1,568 @@
+{
+  "info": {
+    "name": "HR & Operations Management System API",
+    "description": "API collection for HR and Operations Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "metrics"]
+            }
+          }
+        },
+        {
+          "name": "Get Employees Chart Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/employees-chart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "employees-chart"]
+            }
+          }
+        },
+        {
+          "name": "Get Requests Chart Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/requests-chart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "requests-chart"]
+            }
+          }
+        },
+        {
+          "name": "Get Attendance Chart Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/attendance-chart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "attendance-chart"]
+            }
+          }
+        },
+        {
+          "name": "Get Collections Chart Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/collections-chart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "collections-chart"]
+            }
+          }
+        },
+        {
+          "name": "Get Performance Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/performance-metrics",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "performance-metrics"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Employees",
+      "item": [
+        {
+          "name": "List All Employees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/employees?per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees"],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"أحمد محمد\",\n  \"email\": \"ahmed@example.com\",\n  \"phone\": \"01012345678\",\n  \"employee_code\": \"EMP001\",\n  \"position\": \"مندوب توصيل\",\n  \"department\": \"التوصيل\",\n  \"joining_date\": \"2024-01-15\",\n  \"base_salary\": 3000,\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/employees",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees"]
+            }
+          }
+        },
+        {
+          "name": "Get Employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1"]
+            }
+          }
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"أحمد محمد إبراهيم\",\n  \"base_salary\": 3500\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1"]
+            }
+          }
+        },
+        {
+          "name": "Update Employee Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/employees/1/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get Employee Salary History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/employees/1/salary-history",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1", "salary-history"]
+            }
+          }
+        },
+        {
+          "name": "Get Employee Attendance Records",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/employees/1/attendance-records",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1", "attendance-records"]
+            }
+          }
+        },
+        {
+          "name": "Delete Employee",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/employees/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "employees", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Requests",
+      "item": [
+        {
+          "name": "List All Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/requests?per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests"],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "15"
+                },
+                {
+                  "key": "status",
+                  "value": "draft",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"warehouse\": \"المخزن الرئيسي\",\n  \"estimated_delivery_date\": \"2024-07-01\",\n  \"notes\": \"توصيل مستعجل\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/requests",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests"]
+            }
+          }
+        },
+        {
+          "name": "Get Request",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/requests/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests", "1"]
+            }
+          }
+        },
+        {
+          "name": "Add Items to Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"item_id\": 1,\n      \"quantity\": 10,\n      \"unit_price\": 100\n    },\n    {\n      \"item_id\": 2,\n      \"quantity\": 5,\n      \"unit_price\": 250\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/requests/1/items",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests", "1", "items"]
+            }
+          }
+        },
+        {
+          "name": "Submit Request for Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/requests/1/submit-for-review",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests", "1", "submit-for-review"]
+            }
+          }
+        },
+        {
+          "name": "Approve Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"تمت المراجعة والاعتماد\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/requests/1/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests", "1", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Reject Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejection_reason\": \"البيانات غير دقيقة\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/requests/1/reject",
+              "host": ["{{base_url}}"],
+              "path": ["api", "requests", "1", "reject"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://mphamedhr.local",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_api_token_here",
+      "type": "string"
+    }
+  ]
+}
