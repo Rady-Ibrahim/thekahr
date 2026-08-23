@@ -14,14 +14,7 @@ class RoleAndPermissionSeeder extends Seeder
             'super_admin' => 'مدير النظام',
             'hr_manager' => 'مدير الموارد البشرية',
             'finance_manager' => 'مدير المالية',
-            'operations_manager' => 'مدير التشغيل',
-            'warehouse_manager' => 'مدير المخزن',
-            'delivery_manager' => 'مدير التوصيل',
-            'approver_level_1' => 'موافق المستوى الأول',
-            'approver_level_2' => 'موافق المستوى الثاني',
-            'approver_level_3' => 'موافق المستوى الثالث',
             'manager' => 'مدير',
-            'driver' => 'سائق / مندوب',
             'employee' => 'الموظف',
             'report_viewer' => 'عارض التقارير',
         ];
@@ -39,24 +32,6 @@ class RoleAndPermissionSeeder extends Seeder
             ['name' => 'create_employees', 'group' => 'employees', 'description' => 'إنشاء موظفين'],
             ['name' => 'edit_employees', 'group' => 'employees', 'description' => 'تعديل الموظفين'],
             ['name' => 'delete_employees', 'group' => 'employees', 'description' => 'حذف الموظفين'],
-
-            // Requests Management
-            ['name' => 'view_requests', 'group' => 'requests', 'description' => 'عرض الطلبات'],
-            ['name' => 'create_requests', 'group' => 'requests', 'description' => 'إنشاء طلبات'],
-            ['name' => 'edit_requests', 'group' => 'requests', 'description' => 'تعديل الطلبات'],
-            ['name' => 'delete_requests', 'group' => 'requests', 'description' => 'حذف الطلبات'],
-            ['name' => 'approve_requests', 'group' => 'requests', 'description' => 'موافقة الطلبات'],
-
-            // Deliveries
-            ['name' => 'view_deliveries', 'group' => 'deliveries', 'description' => 'عرض التسليمات'],
-            ['name' => 'create_deliveries', 'group' => 'deliveries', 'description' => 'إنشاء تسليمات'],
-            ['name' => 'edit_deliveries', 'group' => 'deliveries', 'description' => 'تعديل التسليمات'],
-            ['name' => 'approve_routes', 'group' => 'deliveries', 'description' => 'موافقة خطوط السير'],
-
-            // Collections
-            ['name' => 'view_collections', 'group' => 'collections', 'description' => 'عرض التحصيلات'],
-            ['name' => 'create_collections', 'group' => 'collections', 'description' => 'إنشاء تحصيلات'],
-            ['name' => 'approve_collections', 'group' => 'collections', 'description' => 'موافقة التحصيلات'],
 
             // Attendance
             ['name' => 'view_attendance', 'group' => 'attendance', 'description' => 'عرض الحضور'],
@@ -86,31 +61,9 @@ class RoleAndPermissionSeeder extends Seeder
             ['name' => 'view_deductions', 'group' => 'salaries', 'description' => 'عرض الخصومات'],
             ['name' => 'view_advances', 'group' => 'salaries', 'description' => 'عرض السلف'],
             ['name' => 'view_allowances', 'group' => 'salaries', 'description' => 'عرض البدلات'],
-            ['name' => 'view_commissions', 'group' => 'salaries', 'description' => 'عرض العمولات'],
 
             // Employee points
             ['name' => 'view_employee_points', 'group' => 'employees', 'description' => 'عرض نقاط الموظفين'],
-
-            // Prepaid requests
-            ['name' => 'view_prepaid_requests', 'group' => 'requests', 'description' => 'عرض تحضير الطلبيه'],
-
-            // Delivery routes
-            ['name' => 'view_routes', 'group' => 'deliveries', 'description' => 'عرض خطوط السير'],
-
-            // Car violations
-            ['name' => 'view_car_violations', 'group' => 'car_violations', 'description' => 'عرض مخالفات السيارات'],
-
-            // Customers
-            ['name' => 'view_customers', 'group' => 'customers', 'description' => 'عرض العملاء'],
-
-            // Warehouses
-            ['name' => 'view_warehouses', 'group' => 'warehouses', 'description' => 'عرض المخازن'],
-
-            // Items
-            ['name' => 'view_items', 'group' => 'items', 'description' => 'عرض الأصناف'],
-
-            // Approvals
-            ['name' => 'view_approvals', 'group' => 'approvals', 'description' => 'عرض الموافقات'],
 
             // Chat groups
             ['name' => 'view_chat_groups', 'group' => 'chat_groups', 'description' => 'عرض مجموعات الدردشة'],
@@ -144,44 +97,18 @@ class RoleAndPermissionSeeder extends Seeder
             $superAdminRole->permissions()->sync($permissions);
         }
 
-        $collectionPermissions = Permission::whereIn('name', [
-            'view_collections',
-            'create_collections',
-        ])->pluck('id');
-
-        foreach (['hr_manager', 'driver'] as $roleName) {
-            $role = Role::where('name', $roleName)->first();
-            if ($role && $collectionPermissions->isNotEmpty()) {
-                $role->permissions()->syncWithoutDetaching($collectionPermissions);
-            }
-        }
-
-        // Direct managers approve collections from mobile; HR can too (dashboard)
-        $managerApprovePermissions = Permission::whereIn('name', [
-            'view_collections',
-            'approve_collections',
-        ])->pluck('id');
-
-        $managerRole = Role::where('name', 'manager')->first();
-        if ($managerRole && $managerApprovePermissions->isNotEmpty()) {
-            $managerRole->permissions()->syncWithoutDetaching($managerApprovePermissions);
-        }
-
         // Manager team-financial permissions (allowances, incentives, deductions)
-        $teamFinancialPerms = Permission::whereIn('name', [
-            'manage_allowances',
-            'manage_incentives',
-            'manage_deductions',
-        ])->pluck('id');
+        $managerRole = Role::where('name', 'manager')->first();
+        if ($managerRole) {
+            $teamFinancialPerms = Permission::whereIn('name', [
+                'manage_allowances',
+                'manage_incentives',
+                'manage_deductions',
+            ])->pluck('id');
 
-        if ($managerRole && $teamFinancialPerms->isNotEmpty()) {
-            $managerRole->permissions()->syncWithoutDetaching($teamFinancialPerms);
-        }
-
-        $hrRole = Role::where('name', 'hr_manager')->first();
-        $approveCollection = Permission::where('name', 'approve_collections')->first();
-        if ($hrRole && $approveCollection) {
-            $hrRole->permissions()->syncWithoutDetaching([$approveCollection->id]);
+            if ($teamFinancialPerms->isNotEmpty()) {
+                $managerRole->permissions()->syncWithoutDetaching($teamFinancialPerms);
+            }
         }
     }
 }

@@ -16,10 +16,7 @@
     $reports = [
         ['key'=>'employees',   'title'=>'تقرير الموظفين',       'icon'=>'fas fa-users',         'color'=>'#e3f2fd','iconColor'=>'#1565c0', 'desc'=>'بيانات جميع الموظفين وحالاتهم'],
         ['key'=>'attendance',  'title'=>'تقرير الحضور',         'icon'=>'fas fa-fingerprint',   'color'=>'#e8f5e9','iconColor'=>'#2e7d32', 'desc'=>'سجل حضور وانصراف الموظفين'],
-        ['key'=>'requests',    'title'=>'تقرير الطلبات',        'icon'=>'fas fa-clipboard-list', 'color'=>'#fff8e1','iconColor'=>'#f57f17', 'desc'=>'جميع الطلبات وحالاتها'],
-        ['key'=>'collections', 'title'=>'تقرير التحصيلات',     'icon'=>'fas fa-coins',         'color'=>'#e0f7fa','iconColor'=>'#00838f', 'desc'=>'التحصيلات النقدية والإجماليات'],
         ['key'=>'salaries',    'title'=>'تقرير الرواتب',        'icon'=>'fas fa-money-bill-wave','color'=>'#e8f5e9','iconColor'=>'#388e3c', 'desc'=>'كشف رواتب الموظفين'],
-        ['key'=>'performance', 'title'=>'تقرير الأداء',        'icon'=>'fas fa-trophy',        'color'=>'#fce4ec','iconColor'=>'#c62828', 'desc'=>'أداء المندوبين والموظفين'],
         ['key'=>'incentives',  'title'=>'تقرير الحوافز',       'icon'=>'fas fa-star',          'color'=>'#f3e5f5','iconColor'=>'#6a1b9a', 'desc'=>'الحوافز والخصومات والبدلات'],
         ['key'=>'monthly',     'title'=>'الملخص الشهري',       'icon'=>'fas fa-calendar-alt',  'color'=>'#e8eaf6','iconColor'=>'#3949ab', 'desc'=>'ملخص شامل للشهر الحالي'],
     ];
@@ -126,8 +123,8 @@ const L = {
 
 let currentReport = '';
 const reportTitles = {
-    employees: 'تقرير الموظفين', attendance: 'تقرير الحضور', requests: 'تقرير الطلبات',
-    collections: 'تقرير التحصيلات', salaries: 'تقرير الرواتب', performance: 'تقرير الأداء',
+    employees: 'تقرير الموظفين', attendance: 'تقرير الحضور',
+    salaries: 'تقرير الرواتب',
     incentives: 'تقرير الحوافز', monthly: 'الملخص الشهري'
 };
 

@@ -92,11 +92,6 @@ class Employee extends Model
         return $this->hasMany(Employee::class, 'reporting_manager_id');
     }
 
-    public function customers(): BelongsToMany
-    {
-        return $this->belongsToMany(Customer::class, 'customer_employee')->withTimestamps();
-    }
-
     public function attendances(): HasMany
     {
         return $this->hasMany(Attendance::class);
@@ -117,11 +112,6 @@ class Employee extends Model
         return $this->hasMany(Allowance::class);
     }
 
-    public function commissions(): HasMany
-    {
-        return $this->hasMany(Commission::class);
-    }
-
     public function advances(): HasMany
     {
         return $this->hasMany(Advance::class);
@@ -130,26 +120,6 @@ class Employee extends Model
     public function salaries(): HasMany
     {
         return $this->hasMany(Salary::class);
-    }
-
-    public function deliveries(): HasMany
-    {
-        return $this->hasMany(Delivery::class, 'driver_id');
-    }
-
-    public function violations(): HasMany
-    {
-        return $this->hasMany(CarViolation::class);
-    }
-
-    public function createdRequests(): HasMany
-    {
-        return $this->hasMany(Request::class, 'created_by_id');
-    }
-
-    public function approvals(): HasMany
-    {
-        return $this->hasMany(Approval::class, 'approved_by_id');
     }
 
     public function tabPermissions(): HasMany

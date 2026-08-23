@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Advance;
 use App\Models\Allowance;
-use App\Models\CarViolation;
-use App\Models\Commission;
 use App\Models\Deduction;
 use App\Models\Employee;
 use App\Models\EmployeePoint;
@@ -69,21 +67,8 @@ class FinancialController
                 'status' => $a->status,
             ]);
 
-        $commissions = Commission::where('employee_id', $employee->id)
-            ->where('month', $month)
-            ->where('year', $year)
-            ->with('collection:id,collection_number,total_amount')
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(fn($c) => [
-                'id' => $c->id,
-                'type' => 'commission',
-                'amount' => (float) $c->amount,
-                'reason' => $c->reason,
-                'date' => $c->created_at->toDateString(),
-                'status' => $c->status,
-                'collection' => $c->collection,
-            ]);
+        $commissions = collect();
+        $violations  = collect();
 
         $deductions = Deduction::where('employee_id', $employee->id)
             ->where('month', $month)
@@ -114,21 +99,6 @@ class FinancialController
                 'installment_amount' => (float) $a->installment_amount,
                 'remaining_installments' => $a->remaining_installments,
                 'remaining_amount' => (float) $a->remaining_amount,
-            ]);
-
-        $violations = CarViolation::where('employee_id', $employee->id)
-            ->whereMonth('violation_date', $month)
-            ->whereYear('violation_date', $year)
-            ->orderByDesc('violation_date')
-            ->get()
-            ->map(fn($v) => [
-                'id' => $v->id,
-                'type' => 'violation',
-                'violation_type' => $v->violation_type,
-                'amount' => (float) $v->fine_amount,
-                'reason' => $v->reason,
-                'date' => $v->violation_date->toDateString(),
-                'status' => $v->status,
             ]);
 
         $points = EmployeePoint::where('employee_id', $employee->id)
@@ -174,8 +144,6 @@ class FinancialController
             'base_salary' => (float) $employee->base_salary,
             'incentives_total' => (float) collect($incentives)->where('status', 'approved')->sum('amount'),
             'allowances_total' => (float) collect($allowances)->sum('amount'),
-            'commissions_total' => (float) collect($commissions)->where('status', 'approved')->sum('amount'),
-            'commissions_pending_total' => (float) collect($commissions)->where('status', 'pending')->sum('amount'),
             'points_credit_total' => $pointsCreditTotal,
             'points_debit_total' => $pointsDebitTotal,
             'points_net_total' => $pointsCreditTotal - $pointsDebitTotal,
@@ -184,7 +152,6 @@ class FinancialController
                 ->whereIn('status', ['active', 'partially_paid'])
                 ->where('remaining_installments', '>', 0)
                 ->sum('installment_amount'),
-            'violations_total' => (float) collect($violations)->where('status', 'pending')->sum('amount'),
             'attendance_deduction_total' => $attendanceDeduction,
             'salary_net' => $salary ? (float) $salary->net_salary : null,
             'salary_gross' => $salary ? (float) $salary->gross_salary : null,
@@ -195,12 +162,10 @@ class FinancialController
             $gross = $summary['base_salary']
                 + $summary['incentives_total']
                 + $summary['allowances_total']
-                + $summary['commissions_total']
                 + $summary['points_credit_total'];
             $estimatedNet = $gross
                 - $summary['deductions_total']
                 - $summary['advances_installment_total']
-                - $summary['violations_total']
                 - $summary['points_debit_total']
                 - $summary['attendance_deduction_total'];
             $summary['estimated_net'] = max(0, round($estimatedNet, 2));

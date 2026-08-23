@@ -77,14 +77,6 @@
         </div>
     </div>
 
-    <!-- Commissions -->
-    <div class="section-card mb-4" id="fsCommissionsSection">
-        <div class="section-header"><i class="fas fa-percent text-info"></i><h5 class="section-title">العمولات</h5><span class="ms-auto text-muted" id="fsComCount"></span></div>
-        <div class="table-responsive">
-            <table class="data-table"><thead><tr><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody id="fsCommissions"></tbody></table>
-        </div>
-    </div>
-
     <!-- Points -->
     <div class="section-card mb-4" id="fsPointsSection">
         <div class="section-header"><i class="fas fa-star-half-alt text-primary"></i><h5 class="section-title">النقاط</h5><span class="ms-auto text-muted" id="fsPtsCount"></span></div>
@@ -106,14 +98,6 @@
         <div class="section-header"><i class="fas fa-hand-holding-usd text-warning"></i><h5 class="section-title">السلف</h5><span class="ms-auto text-muted" id="fsAdvCount"></span></div>
         <div class="table-responsive">
             <table class="data-table"><thead><tr><th>السبب</th><th>المبلغ</th><th>المتبقي</th><th>الحالة</th></tr></thead><tbody id="fsAdvances"></tbody></table>
-        </div>
-    </div>
-
-    <!-- Violations -->
-    <div class="section-card mb-4" id="fsViolationsSection">
-        <div class="section-header"><i class="fas fa-car-crash text-danger"></i><h5 class="section-title">المخالفات</h5><span class="ms-auto text-muted" id="fsVioCount"></span></div>
-        <div class="table-responsive">
-            <table class="data-table"><thead><tr><th>النوع</th><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody id="fsViolations"></tbody></table>
         </div>
     </div>
 </div>
@@ -154,8 +138,8 @@ async function loadStatement() {
     // Employee info
     document.getElementById('fsEmpName').textContent = `${r.employee.name} (${r.employee.employee_code}) - ${r.employee.department??''}`;
     document.getElementById('fsBaseSalary').textContent = Number(r.employee.base_salary).toLocaleString() + ' ج.م';
-    const additions = (r.summary.incentives_total||0) + (r.summary.allowances_total||0) + (r.summary.commissions_total||0) + (r.summary.points_credit_total||0);
-    const deductions = (r.summary.deductions_total||0) + (r.summary.advances_installment_total||0) + (r.summary.violations_total||0) + (r.summary.points_debit_total||0) + (r.summary.attendance_deduction_total||0);
+    const additions = (r.summary.incentives_total||0) + (r.summary.allowances_total||0) + (r.summary.points_credit_total||0);
+    const deductions = (r.summary.deductions_total||0) + (r.summary.advances_installment_total||0) + (r.summary.points_debit_total||0) + (r.summary.attendance_deduction_total||0);
     document.getElementById('fsTotalAdditions').textContent = '+' + Number(additions).toLocaleString() + ' ج.م';
     document.getElementById('fsTotalDeductions').textContent = '-' + Number(deductions).toLocaleString() + ' ج.م';
     document.getElementById('fsNet').textContent = Number(r.summary.estimated_net||0).toLocaleString() + ' ج.م';
@@ -183,13 +167,6 @@ async function loadStatement() {
         ? all.map(a => `<tr><td>${a.allowance_type}</td><td>${a.reason||'-'}</td><td class="text-success">${Number(a.amount).toLocaleString()} ج.م</td><td><span class="badge-status ${a.status==='active'?'badge-active':'badge-inactive'}">${a.status==='active'?'نشط':'غير نشط'}</span></td></tr>`).join('')
         : '<tr><td colspan="4" class="text-muted text-center">لا توجد بدلات</td></tr>';
 
-    // Commissions
-    const com = r.data.commissions || [];
-    document.getElementById('fsComCount').textContent = `(${com.length})`;
-    document.getElementById('fsCommissions').innerHTML = com.length
-        ? com.map(c => `<tr><td>${c.reason||'-'}</td><td class="text-success">${Number(c.amount).toLocaleString()} ج.م</td><td><span class="badge-status ${c.status==='approved'?'badge-active':c.status==='rejected'?'badge-rejected':'badge-pending'}">${c.status==='approved'?'معتمد':c.status==='rejected'?'مرفوض':'معلق'}</span></td></tr>`).join('')
-        : '<tr><td colspan="3" class="text-muted text-center">لا توجد عمولات</td></tr>';
-
     // Points
     const pts = r.data.points || [];
     document.getElementById('fsPtsCount').textContent = `(${pts.length})`;
@@ -212,13 +189,6 @@ async function loadStatement() {
     document.getElementById('fsAdvances').innerHTML = adv.length
         ? adv.map(a => `<tr><td>${a.reason||'-'}</td><td class="fw-bold">${Number(a.amount).toLocaleString()} ج.م</td><td class="text-warning">${Number(a.remaining_amount).toLocaleString()} ج.م</td><td>${a.status}</td></tr>`).join('')
         : '<tr><td colspan="4" class="text-muted text-center">لا توجد سلف</td></tr>';
-
-    // Violations
-    const vio = r.data.violations || [];
-    document.getElementById('fsVioCount').textContent = `(${vio.length})`;
-    document.getElementById('fsViolations').innerHTML = vio.length
-        ? vio.map(v => `<tr><td>${v.violation_type}</td><td>${v.reason||'-'}</td><td class="text-danger">${Number(v.amount).toLocaleString()} ج.م</td><td><span class="badge-status ${v.status==='pending'?'badge-pending':v.status==='paid'?'badge-rejected':'badge-approved'}">${v.status==='pending'?'معلق':v.status==='paid'?'مدفوع':v.status==='waived'?'إعفاء':v.status}</span></td></tr>`).join('')
-        : '<tr><td colspan="4" class="text-muted text-center">لا توجد مخالفات</td></tr>';
 }
 
 function printStatementPDF() {
@@ -229,8 +199,8 @@ function printStatementPDF() {
     const emp = r.employee || {};
     const d = r.data || {};
 
-    const additions = (s.incentives_total||0) + (s.allowances_total||0) + (s.commissions_total||0) + (s.points_credit_total||0);
-    const deductions = (s.deductions_total||0) + (s.advances_installment_total||0) + (s.violations_total||0) + (s.points_debit_total||0) + (s.attendance_deduction_total||0);
+    const additions = (s.incentives_total||0) + (s.allowances_total||0) + (s.points_credit_total||0);
+    const deductions = (s.deductions_total||0) + (s.advances_installment_total||0) + (s.points_debit_total||0) + (s.attendance_deduction_total||0);
     const statusMap = { approved:'معتمد', rejected:'مرفوض', pending:'معلق', active:'نشط', computed:'محسوب' };
     const st = st2 => statusMap[st2] || st2;
 
@@ -269,13 +239,6 @@ function printStatementPDF() {
         : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد بدلات</td></tr>';
     html += `</tbody></table>`;
 
-    const com = d.commissions || [];
-    html += `<div class="h2">العمولات (${com.length})</div><table><thead><tr><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>`;
-    html += com.length
-        ? com.map(c => `<tr><td>${escapeHtml(c.reason||'-')}</td><td class="pos">${Number(c.amount).toLocaleString()} ج.م</td><td>${st(c.status)}</td></tr>`).join('')
-        : '<tr><td colspan="3" style="text-align:center;color:#6b7280">لا توجد عمولات</td></tr>';
-    html += `</tbody></table>`;
-
     const pts = d.points || [];
     html += `<div class="h2">النقاط (${pts.length})</div><table><thead><tr><th>النوع</th><th>السبب</th><th>النقاط</th><th>المبلغ</th></tr></thead><tbody>`;
     html += pts.length
@@ -295,13 +258,6 @@ function printStatementPDF() {
     html += adv.length
         ? adv.map(a => `<tr><td>${escapeHtml(a.reason||'-')}</td><td>${Number(a.amount).toLocaleString()} ج.م</td><td>${Number(a.remaining_amount).toLocaleString()} ج.م</td><td>${st(a.status)}</td></tr>`).join('')
         : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد سلف</td></tr>';
-    html += `</tbody></table>`;
-
-    const vio = d.violations || [];
-    html += `<div class="h2">المخالفات (${vio.length})</div><table><thead><tr><th>النوع</th><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>`;
-    html += vio.length
-        ? vio.map(v => `<tr><td>${escapeHtml(v.violation_type)}</td><td>${escapeHtml(v.reason||'-')}</td><td class="neg">${Number(v.amount).toLocaleString()} ج.م</td><td>${v.status==='pending'?'معلق':v.status==='paid'?'مدفوع':v.status==='waived'?'إعفاء':st(v.status)}</td></tr>`).join('')
-        : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد مخالفات</td></tr>';
     html += `</tbody></table>`;
 
     printHTML('كشف حساب موظف', html);

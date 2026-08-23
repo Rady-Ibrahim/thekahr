@@ -16,11 +16,6 @@ class EmployeeTabPermissionController
         ['tab_name' => 'الحوافز',            'tab_key' => '2'],
         ['tab_name' => 'الخصومات',           'tab_key' => '3'],
         ['tab_name' => 'السلف',              'tab_key' => '4'],
-        ['tab_name' => 'الطلبات',            'tab_key' => '5'],
-        ['tab_name' => ' تحضير الطلبيه',       'tab_key' => '6'],
-        ['tab_name' => 'خطوط السير',         'tab_key' => '7'],
-        ['tab_name' => 'التسليمات',          'tab_key' => '8'],
-        ['tab_name' => 'التحصيلات',          'tab_key' => '9'],
         ['tab_name' => 'الحضور والانصراف',   'tab_key' => '10'],
         ['tab_name' => 'مجموعات الدردشة',   'tab_key' => '11'],
     ];

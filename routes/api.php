@@ -5,22 +5,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\WarehouseController;
-use App\Http\Controllers\Api\ItemController;
-use App\Http\Controllers\Api\RequestController;
-use App\Http\Controllers\Api\RouteController;
-use App\Http\Controllers\Api\DeliveryController;
-use App\Http\Controllers\Api\CollectionController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\IncentiveController;
 use App\Http\Controllers\Api\DeductionController;
 use App\Http\Controllers\Api\AdvanceController;
 use App\Http\Controllers\Api\AllowanceController;
-use App\Http\Controllers\Api\CommissionController;
-use App\Http\Controllers\Api\CarViolationController;
 use App\Http\Controllers\Api\SalaryController;
-use App\Http\Controllers\Api\ApprovalController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkLocationController;
@@ -32,7 +22,6 @@ use App\Http\Controllers\Api\EmployeePointController;
 use App\Http\Controllers\Api\ShiftController;
 use App\Http\Controllers\Api\EmployeeShiftController;
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\CustomerExpectedAmountController;
 use App\Http\Controllers\Api\ChatGroupController;
 use App\Http\Controllers\Api\IdealEmployeeController;
 
@@ -114,10 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics',             [DashboardController::class, 'metrics']);
         Route::get('/employees-chart',     [DashboardController::class, 'employeesChart']);
-        Route::get('/requests-chart',      [DashboardController::class, 'requestsChart']);
         Route::get('/attendance-chart',    [DashboardController::class, 'attendanceChart']);
-        Route::get('/collections-chart',   [DashboardController::class, 'collectionsChart']);
-        Route::get('/performance-metrics', [DashboardController::class, 'performanceMetrics']);
     });
 
     // Employees
@@ -141,124 +127,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}/salary-history', [EmployeeController::class, 'getSalaryHistory']);
         Route::get('/{id}/attendance',     [EmployeeController::class, 'getAttendanceRecords']);
         Route::get('/{id}/financial-statement', [FinancialController::class, 'employeeFinancials']);
-    });
-
-    // Customers
-    Route::prefix('customers')->group(function () {
-        Route::get('/',                          [CustomerController::class, 'index']);
-        Route::post('/',                         [CustomerController::class, 'store']);
-        Route::get('/{id}',                      [CustomerController::class, 'show']);
-        Route::put('/{id}',                      [CustomerController::class, 'update']);
-        Route::delete('/{id}',                   [CustomerController::class, 'destroy']);
-        Route::get('/{id}/requests',             [CustomerController::class, 'requests']);
-        Route::post('/{id}/assign-employee',     [CustomerController::class, 'assignEmployee']);
-        Route::delete('/{id}/remove-employee/{employeeId}', [CustomerController::class, 'removeEmployee']);
-        Route::get('/{customerId}/expected-amounts/history', [CustomerExpectedAmountController::class, 'history']);
-    });
-
-    // Customer Expected Amounts
-    Route::prefix('customer-expected-amounts')->group(function () {
-        Route::post('/',       [CustomerExpectedAmountController::class, 'store']);
-        Route::put('/{id}',    [CustomerExpectedAmountController::class, 'update']);
-        Route::delete('/{id}', [CustomerExpectedAmountController::class, 'destroy']);
-    });
-
-    // Warehouses
-    Route::prefix('warehouses')->group(function () {
-        Route::get('/',           [WarehouseController::class, 'index']);
-        Route::post('/',          [WarehouseController::class, 'store']);
-        Route::get('/{id}',       [WarehouseController::class, 'show']);
-        Route::put('/{id}',       [WarehouseController::class, 'update']);
-        Route::delete('/{id}',    [WarehouseController::class, 'destroy']);
-        Route::get('/{id}/items', [WarehouseController::class, 'items']);
-    });
-
-    // Items
-    Route::prefix('items')->group(function () {
-        Route::get('/categories', [ItemController::class, 'categories']);
-        Route::get('/',           [ItemController::class, 'index']);
-        Route::post('/',          [ItemController::class, 'store']);
-        Route::get('/{id}',       [ItemController::class, 'show']);
-        Route::put('/{id}',       [ItemController::class, 'update']);
-        Route::delete('/{id}',    [ItemController::class, 'destroy']);
-    });
-
-    // Requests
-    Route::prefix('requests')->group(function () {
-        Route::post('/prepaid',                 [RequestController::class, 'storePrepaid']);
-        Route::get('/my',                       [RequestController::class, 'myRequests']);
-        Route::get('/received/pending',         [RequestController::class, 'receivedPending']);
-        Route::get('/reviewer/pending',         [RequestController::class, 'reviewerPending']);
-        Route::get('/manager/pending',          [RequestController::class, 'managerPending']);
-        Route::get('/',                        [RequestController::class, 'index']);
-        Route::post('/',                       [RequestController::class, 'store']);
-        Route::get('/{id}',                    [RequestController::class, 'show']);
-        Route::put('/{id}',                    [RequestController::class, 'update']);
-        Route::delete('/{id}',                 [RequestController::class, 'destroy']);
-        Route::post('/{id}/items',             [RequestController::class, 'addItems']);
-        Route::post('/{id}/prepare',           [RequestController::class, 'prepare']);
-        Route::post('/{id}/submit-for-review', [RequestController::class, 'submitForReview']);
-        Route::post('/{id}/submit-reviewer-review', [RequestController::class, 'submitReviewerReview']);
-        Route::post('/{id}/transfer-to-employee', [RequestController::class, 'transferToEmployee']);
-        Route::post('/{id}/reviewer-approve',  [RequestController::class, 'reviewerApprove']);
-        Route::post('/{id}/reviewer-approve-final', [RequestController::class, 'reviewerApproveFinal']);
-        Route::post('/{id}/reviewer-reject',   [RequestController::class, 'reviewerReject']);
-        Route::post('/{id}/submit-manager-review', [RequestController::class, 'submitManagerReview']);
-        Route::post('/{id}/manager-approve',   [RequestController::class, 'managerApprove']);
-        Route::post('/{id}/manager-reject',    [RequestController::class, 'managerReject']);
-        Route::post('/{id}/approve',           [RequestController::class, 'approve']);
-        Route::post('/{id}/reject',            [RequestController::class, 'reject']);
-    });
-
-    // Delivery Routes (خطوط السير)
-    Route::prefix('routes')->group(function () {
-        Route::get('/daily',   [RouteController::class, 'daily']);
-        Route::post('/with-stops', [RouteController::class, 'storeWithStops']);
-        Route::get('/',        [RouteController::class, 'index']);
-        Route::post('/',       [RouteController::class, 'store']);
-        Route::get('/{id}',    [RouteController::class, 'show']);
-        Route::put('/{id}',    [RouteController::class, 'update']);
-        Route::delete('/{id}', [RouteController::class, 'destroy']);
-        Route::get('/{id}/stops', [RouteController::class, 'stops']);
-        Route::put('/{id}/with-stops', [RouteController::class, 'updateWithStops']);
-        Route::post('/{id}/dispatch', [RouteController::class, 'dispatch']);
-        Route::post('/{id}/deliveries', [RouteController::class, 'createDelivery']);
-        Route::post('/{id}/odometer-start', [RouteController::class, 'recordOdometerStart']);
-        Route::post('/{id}/odometer-end',   [RouteController::class, 'recordOdometerEnd']);
-        Route::post('/{id}/odometer-verify', [RouteController::class, 'verifyOdometer']);
-    });
-
-    // Deliveries
-    Route::prefix('deliveries')->group(function () {
-        Route::get('/my',              [DeliveryController::class, 'driverDeliveries']);
-        Route::get('/',                [DeliveryController::class, 'index']);
-        Route::post('/',               [DeliveryController::class, 'store']);
-        Route::get('/{id}',            [DeliveryController::class, 'show']);
-        Route::put('/{id}',            [DeliveryController::class, 'update']);
-        Route::delete('/{id}',         [DeliveryController::class, 'destroy']);
-        Route::put('/{id}/status',     [DeliveryController::class, 'updateStatus']);
-        Route::post('/{id}/complete-with-collection', [DeliveryController::class, 'completeWithCollection'])
-            ->middleware('permission:create_collections');
-        Route::post('/{id}/proof',     [DeliveryController::class, 'uploadProof']);
-        Route::post('/{id}/tracking',  [DeliveryController::class, 'addTracking']);
-        Route::get('/{id}/tracking',   [DeliveryController::class, 'tracking']);
-    });
-
-    // Collections
-    Route::prefix('collections')->group(function () {
-        Route::get('/daily-summary',              [CollectionController::class, 'dailySummary']);
-        Route::get('/driver/{driverId}/summary',  [CollectionController::class, 'driverSummary']);
-        Route::get('/',                           [CollectionController::class, 'index']);
-        Route::post('/',                          [CollectionController::class, 'store'])
-            ->middleware('permission:create_collections');
-        Route::get('/{id}',                       [CollectionController::class, 'show']);
-        Route::put('/{id}',                       [CollectionController::class, 'update'])
-            ->middleware('permission:create_collections');
-        Route::delete('/{id}',                    [CollectionController::class, 'destroy']);
-        Route::post('/{id}/approve',              [CollectionController::class, 'approve'])
-            ->middleware('permission:approve_collections');
-        Route::post('/{id}/reject',               [CollectionController::class, 'reject'])
-            ->middleware('permission:approve_collections');
     });
 
     // Shifts
@@ -341,29 +209,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{id}',       [AllowanceController::class, 'destroy']);
     });
 
-    // Commissions
-    Route::prefix('commissions')->group(function () {
-        Route::get('/monthly-summary', [CommissionController::class, 'monthlySummary']);
-        Route::get('/',              [CommissionController::class, 'index']);
-        Route::post('/',             [CommissionController::class, 'store']);
-        Route::post('/bulk-approve', [CommissionController::class, 'bulkApprove']);
-        Route::get('/{id}',          [CommissionController::class, 'show']);
-        Route::put('/{id}',          [CommissionController::class, 'update']);
-        Route::delete('/{id}',       [CommissionController::class, 'destroy']);
-        Route::post('/{id}/approve', [CommissionController::class, 'approve']);
-        Route::post('/{id}/reject',  [CommissionController::class, 'reject']);
-    });
-
-    // Car Violations
-    Route::prefix('car-violations')->group(function () {
-        Route::get('/employee/{empId}/summary', [CarViolationController::class, 'employeeSummary']);
-        Route::get('/',        [CarViolationController::class, 'index']);
-        Route::post('/',       [CarViolationController::class, 'store']);
-        Route::get('/{id}',    [CarViolationController::class, 'show']);
-        Route::put('/{id}',    [CarViolationController::class, 'update']);
-        Route::post('/{id}/waive', [CarViolationController::class, 'waive']);
-    });
-
     // Salaries
     Route::prefix('salaries')->group(function () {
         Route::get('/monthly-summary',         [SalaryController::class, 'monthlySummary']);
@@ -376,22 +221,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/pay',               [SalaryController::class, 'pay']);
     });
 
-    // Approvals
-    Route::prefix('approvals')->group(function () {
-        Route::get('/pending',       [ApprovalController::class, 'pending']);
-        Route::get('/history',       [ApprovalController::class, 'history']);
-        Route::post('/{id}/approve', [ApprovalController::class, 'approve']);
-        Route::post('/{id}/reject',  [ApprovalController::class, 'reject']);
-    });
-
     // Reports
     Route::prefix('reports')->group(function () {
         Route::get('/employees',        [ReportController::class, 'employees']);
         Route::get('/attendance',       [ReportController::class, 'attendance']);
-        Route::get('/requests',         [ReportController::class, 'requests']);
-        Route::get('/collections',      [ReportController::class, 'collections']);
         Route::get('/salaries',         [ReportController::class, 'salaries']);
-        Route::get('/performance',      [ReportController::class, 'performance']);
         Route::get('/incentives',       [ReportController::class, 'incentivesReport']);
         Route::get('/monthly-summary',  [ReportController::class, 'monthlyAdminSummary']);
     });

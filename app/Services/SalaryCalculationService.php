@@ -5,8 +5,6 @@ namespace App\Services;
 use App\Models\Advance;
 use App\Models\Allowance;
 use App\Models\Attendance;
-use App\Models\CarViolation;
-use App\Models\Commission;
 use App\Models\Deduction;
 use App\Models\Employee;
 use App\Models\EmployeePoint;
@@ -14,7 +12,6 @@ use App\Models\Incentive;
 use App\Models\Salary;
 use App\Models\SalaryComponentLog;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
 class SalaryCalculationService
@@ -58,15 +55,9 @@ class SalaryCalculationService
                 $components[] = ['type' => 'allowance', 'name' => $all->allowance_type, 'id' => $all->id, 'amount' => $all->amount, 'reason' => $all->reason];
             }
 
-            // 3. Commissions (approved only — pending wait for الاعتماد الكلي)
-            $commissions = Commission::where('employee_id', $employee->id)
-                ->where('month', $month)->where('year', $year)
-                ->where('status', 'approved')->get();
-            $totalCommissions = $commissions->sum('amount');
-            foreach ($commissions as $com) {
-                $label = $com->source === 'collection' ? 'عمولة تحصيل' : 'عمولة مبيعات';
-                $components[] = ['type' => 'commission', 'name' => $label, 'id' => $com->id, 'amount' => $com->amount, 'reason' => $com->reason];
-            }
+            // 3. Commissions & car violations removed with operations module
+            $totalCommissions = 0;
+            $totalViolations  = 0;
 
             // 3.5 Employee Points (Credit: له) — stored separately from incentives
             $totalPointsCredit = (float) EmployeePoint::where('employee_id', $employee->id)
@@ -118,15 +109,7 @@ class SalaryCalculationService
                 $components[] = ['type' => 'advance', 'name' => 'قسط سلفة', 'id' => $adv->id, 'amount' => -$adv->installment_amount, 'reason' => $adv->reason];
             }
 
-            // 7. Car violations
-            $violations = CarViolation::where('employee_id', $employee->id)
-                ->where('status', 'pending')
-                ->whereMonth('violation_date', $month)
-                ->whereYear('violation_date', $year)->get();
-            $totalViolations = $violations->sum('fine_amount');
-            foreach ($violations as $vio) {
-                $components[] = ['type' => 'violation', 'name' => $vio->violation_type, 'id' => $vio->id, 'amount' => -$vio->fine_amount, 'reason' => $vio->reason];
-            }
+            // 7. Car violations removed with operations module
 
             $netSalary = $grossSalary - $totalDeductions - $totalPointsDebit - $totalAdvances - $totalViolations;
             $netSalary = max(0, $netSalary);
