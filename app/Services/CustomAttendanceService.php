@@ -114,6 +114,124 @@ class CustomAttendanceService
     }
 
     /**
+     * Admin manual entry: create a fully-specified session (check-in/out times)
+     * for any date, optionally overriding the day's required hours.
+     */
+    public function manualSession(Employee $employee, array $data): array
+    {
+        return DB::transaction(function () use ($employee, $data) {
+            $date = $data['date'] ?? today()->toDateString();
+
+            if ($date > today()->toDateString()) {
+                return ['success' => false, 'message' => 'لا يمكن تسجيل جلسة بتاريخ مستقبلي'];
+            }
+
+            if ($data['check_out_time'] === $data['check_in_time']) {
+                return ['success' => false, 'message' => 'وقت الحضور والانصراف متطابقان'];
+            }
+
+            [$in, $out] = $this->resolveSessionRange($data['check_in_time'], $data['check_out_time']);
+            $durationMinutes = max(0, (int) $in->diffInMinutes($out));
+
+            $attendance = Attendance::firstOrCreate(
+                ['employee_id' => $employee->id, 'attendance_date' => $date],
+                [
+                    'status' => 'present',
+                    'required_hours' => $employee->requiredDailyHours(),
+                ]
+            );
+
+            if ($attendance->status === 'absent') {
+                $attendance->update(['status' => 'present', 'late_minutes' => 0]);
+            }
+
+            AttendanceLog::create([
+                'employee_id'      => $employee->id,
+                'attendance_id'    => $attendance->id,
+                'log_date'         => $date,
+                'check_in_time'    => $data['check_in_time'],
+                'check_out_time'   => $data['check_out_time'],
+                'duration_minutes' => $durationMinutes,
+                'source'           => 'admin',
+                'notes'            => $data['notes'] ?? null,
+            ]);
+
+            if (!empty($data['required_hours'])) {
+                $this->applyRequiredHours($attendance->id, (float) $data['required_hours']);
+            }
+
+            $updated = $this->recalculateDay($attendance->id);
+
+            return [
+                'success' => true,
+                'message' => sprintf(
+                    'تم تسجيل الجلسة يدوياً (%s دقيقة عمل)',
+                    number_format($durationMinutes)
+                ),
+                'session_duration_minutes' => $durationMinutes,
+                'summary' => $updated ? $this->buildSummary($updated) : null,
+            ];
+        });
+    }
+
+    /**
+     * Set a per-day required-hours override (null = reset to employee default).
+     */
+    public function applyRequiredHours(int $attendanceId, ?float $hours): ?Attendance
+    {
+        $attendance = Attendance::findOrFail($attendanceId);
+
+        $attendance->update([
+            'required_hours' => $hours ?? $attendance->employee->requiredDailyHours(),
+        ]);
+
+        return $this->recalculateDay($attendanceId);
+    }
+
+    /**
+     * Update the employee's daily required hours and re-sync today's record,
+     * so totals/deductions reflect the new target immediately.
+     */
+    public function setDailyRequiredHours(Employee $employee, float $hours): array
+    {
+        return DB::transaction(function () use ($employee, $hours) {
+            $employee->update([
+                'is_custom_attendance' => true,
+                'daily_required_hours' => $hours,
+            ]);
+
+            $attendance = Attendance::where('employee_id', $employee->id)
+                ->where('attendance_date', today())
+                ->first();
+
+            if ($attendance) {
+                $this->applyRequiredHours($attendance->id, $hours);
+            }
+
+            return [
+                'success' => true,
+                'message' => sprintf('تم تحديد %s ساعة مطلوبة يومياً للموظف %s', rtrim(rtrim(number_format($hours, 2), '0'), '.'), $employee->name),
+            ];
+        });
+    }
+
+    /**
+     * Compute duration for admin-entered times; an end time earlier than the
+     * start time is treated as crossing midnight.
+     */
+    public function resolveSessionRange(string $checkIn, string $checkOut): array
+    {
+        $in = Carbon::createFromFormat('H:i', $checkIn);
+        $out = Carbon::createFromFormat('H:i', $checkOut);
+
+        if ($out->lessThan($in)) {
+            $out->addDay();
+        }
+
+        return [$in, $out];
+    }
+
+    /**
      * Aggregate all sessions of the day: totals, hours status flag and shortfall deduction.
      */
     public function recalculateDay(?int $attendanceId): ?Attendance
@@ -128,8 +246,9 @@ class CustomAttendanceService
         $totalMinutes = (int) $attendance->logs->sum('duration_minutes');
         $totalHours = round($totalMinutes / 60, 2);
 
+        // Per-day override (set via manual entry) takes precedence over the employee default.
         $requiredHours = $employee?->isCustomAttendance()
-            ? $employee->requiredDailyHours()
+            ? (float) ($attendance->required_hours ?: $employee->requiredDailyHours())
             : (float) config('hr.working_hours.daily_hours', 8);
 
         [$hoursStatus, $shortfallDeduction] = $this->resolveHoursStatus(
@@ -190,6 +309,7 @@ class CustomAttendanceService
 
         return [
             'is_custom_attendance' => true,
+            'employee_name'        => $employee->name,
             'daily_required_hours' => (float) $employee->requiredDailyHours(),
             'attendance_id' => $attendance?->id,
             'sessions' => $attendance?->logs->map(fn (AttendanceLog $log) => $this->formatSession($log))->values() ?? [],

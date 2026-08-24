@@ -542,15 +542,32 @@ class AttendanceController
         $attendance = Attendance::findOrFail($id);
         $validated = $this->validateSessionPayload($request);
 
+        $duration = null;
+        if (!empty($validated['check_out_time'])) {
+            [$in, $out] = $this->customService->resolveSessionRange(
+                $validated['check_in_time'],
+                $validated['check_out_time']
+            );
+            $duration = max(0, (int) $in->diffInMinutes($out));
+        }
+
         AttendanceLog::create([
             'employee_id' => $attendance->employee_id,
             'attendance_id' => $attendance->id,
             'log_date' => $attendance->attendance_date->toDateString(),
             'check_in_time' => $validated['check_in_time'],
             'check_out_time' => $validated['check_out_time'] ?? null,
+            'duration_minutes' => $duration,
             'source' => 'admin',
             'notes' => $validated['notes'] ?? null,
         ]);
+
+        if (array_key_exists('required_hours', $validated)) {
+            $this->customService->applyRequiredHours(
+                $attendance->id,
+                $validated['required_hours'] !== null ? (float) $validated['required_hours'] : null
+            );
+        }
 
         $updated = $this->customService->recalculateDay($attendance->id);
 
@@ -575,6 +592,13 @@ class AttendanceController
             'check_out_time' => array_key_exists('check_out_time', $validated) ? $validated['check_out_time'] : $log->check_out_time,
             'notes' => $validated['notes'] ?? $log->notes,
         ], fn ($v) => $v !== null));
+
+        if (array_key_exists('required_hours', $validated)) {
+            $this->customService->applyRequiredHours(
+                $log->attendance_id,
+                $validated['required_hours'] !== null ? (float) $validated['required_hours'] : null
+            );
+        }
 
         // Recompute duration when both ends exist; clear it for re-opened sessions.
         if (!$log->isOpen()) {
@@ -607,15 +631,86 @@ class AttendanceController
         return response()->json(['success' => true, 'message' => 'تم حذف الجلسة وتحديث الإجماليات']);
     }
 
+    /**
+     * Set the employee's daily required hours from the flexible-attendance widget.
+     */
+    public function customSetRequiredHours(Request $request): JsonResponse
+    {
+        if (!$this->isAdminUser()) {
+            return response()->json(['success' => false, 'message' => 'غير مصرح'], 403);
+        }
+
+        $validated = $request->validate([
+            'employee_id'          => ['required', 'integer', 'exists:employees,id'],
+            'daily_required_hours' => ['required', 'numeric', 'min:0.5', 'max:24'],
+        ]);
+
+        $employee = Employee::findOrFail($validated['employee_id']);
+
+        if (!$employee->isCustomAttendance()) {
+            return response()->json(['success' => false, 'message' => 'الموظف ليس على نظام الحضور المخصص'], 422);
+        }
+
+        $result = $this->customService->setDailyRequiredHours(
+            $employee,
+            (float) $validated['daily_required_hours']
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+            'data'    => ['daily_required_hours' => (float) $validated['daily_required_hours']],
+        ]);
+    }
+
     private function validateSessionPayload(Request $request, bool $requireCheckIn = true): array
     {
         $rules = [
             'check_in_time'  => [$requireCheckIn ? 'required' : 'sometimes', 'nullable', 'date_format:H:i'],
             'check_out_time' => ['nullable', 'date_format:H:i'],
+            'required_hours' => ['nullable', 'numeric', 'min:0', 'max:24'],
             'notes'          => ['nullable', 'string'],
         ];
 
         return $request->validate($rules);
+    }
+
+    /**
+     * Admin quick manual entry from the flexible-attendance widget:
+     * check-in time, check-out time and the day's required hours.
+     */
+    public function customManualSession(Request $request): JsonResponse
+    {
+        if (!$this->isAdminUser()) {
+            return response()->json(['success' => false, 'message' => 'غير مصرح'], 403);
+        }
+
+        $validated = $request->validate([
+            'employee_id'    => ['required', 'integer', 'exists:employees,id'],
+            'date'           => ['nullable', 'date', 'before_or_equal:today'],
+            'check_in_time'  => ['required', 'date_format:H:i'],
+            'check_out_time' => ['required', 'date_format:H:i'],
+            'required_hours' => ['nullable', 'numeric', 'min:0', 'max:24'],
+            'notes'          => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $employee = Employee::findOrFail($validated['employee_id']);
+
+        if (!$employee->isCustomAttendance()) {
+            return response()->json(['success' => false, 'message' => 'الموظف ليس على نظام الحضور المخصص'], 422);
+        }
+
+        $result = $this->customService->manualSession($employee, $validated);
+
+        if (!$result['success']) {
+            return response()->json($result, 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+            'data'    => $result['summary'],
+        ], 201);
     }
 
     public function penaltyDetails($id): JsonResponse

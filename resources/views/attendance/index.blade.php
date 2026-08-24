@@ -67,9 +67,9 @@
 <div class="section-card mb-4" id="customPunchCard" style="display:none">
     <div class="section-header">
         <i class="fas fa-stopwatch text-info"></i>
-        <h5 class="section-title">البصمة المرنة — الحضور بالساعات</h5>
+        <h5 class="section-title">الحضور المخصص بالساعات</h5>
         <div class="ms-auto d-flex align-items-center gap-2">
-            <select id="customEmpSelect" class="form-select form-select-sm" style="min-width:200px" onchange="loadCustomSummary()"></select>
+            <select id="customEmpSelect" class="form-select form-select-sm" style="min-width:200px" onchange="syncCustomEmp(this.value)"></select>
             <button class="btn btn-success btn-sm" id="btnCustomCheckIn" onclick="customPunch('in')"><i class="fas fa-fingerprint me-1"></i> حضور</button>
             <button class="btn btn-danger btn-sm" id="btnCustomCheckOut" onclick="customPunch('out')"><i class="fas fa-sign-out-alt me-1"></i> انصراف</button>
         </div>
@@ -84,8 +84,11 @@
             </div>
             <div class="col-6 col-md-3">
                 <div class="stat-card text-center py-2">
-                    <div class="stat-value text-primary" id="custRequired">-</div>
-                    <div class="stat-label">المطلوب يومياً</div>
+                    <div class="d-flex align-items-center justify-content-center gap-1">
+                        <input type="number" id="custReqHoursInput" class="form-control form-control-sm text-center fw-bold" style="width:80px" step="0.5" min="0.5" max="24" placeholder="-">
+                        <button class="btn btn-sm btn-outline-primary px-2" onclick="saveRequiredHours()" title="حفظ الساعات المطلوبة"><i class="fas fa-check"></i></button>
+                    </div>
+                    <div class="stat-label">المطلوب يومياً (عدّل واحفظ)</div>
                 </div>
             </div>
             <div class="col-6 col-md-3">
@@ -104,9 +107,44 @@
         <div class="progress mb-3" style="height:10px">
             <div class="progress-bar bg-info" id="custProgressBar" role="progressbar" style="width:0%"></div>
         </div>
+        <!-- حضور مخصص: admin picks employee + types check-in / check-out / required hours -->
+        <div class="border rounded p-2 mb-3" style="background:#f8f9fc">
+            <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-user-clock text-info me-2"></i>
+                <strong style="font-size:.85rem">حضور مخصص — سجّل وقت الحضور والانصراف والساعات المطلوبة</strong>
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="form-label mb-1" style="font-size:.75rem">الموظف *</label>
+                    <select id="cm_emp" class="form-select form-select-sm" onchange="syncCustomEmp(this.value)"></select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1" style="font-size:.75rem">التاريخ</label>
+                    <input type="date" id="cm_date" class="form-control form-control-sm" value="{{ date('Y-m-d') }}" max="{{ date('Y-m-d') }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1" style="font-size:.75rem">وقت الحضور *</label>
+                    <input type="time" id="cm_in" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1" style="font-size:.75rem">وقت الانصراف *</label>
+                    <input type="time" id="cm_out" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1" style="font-size:.75rem">الساعات المطلوبة</label>
+                    <input type="number" id="cm_req" class="form-control form-control-sm" step="0.5" min="0" max="24" placeholder="افتراضي الموظف">
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-info btn-sm w-100 text-white" onclick="saveManualSession()" title="تسجيل الجلسة"><i class="fas fa-plus"></i></button>
+                </div>
+                <div class="col-12 col-md-11">
+                    <input type="text" id="cm_notes" class="form-control form-control-sm" maxlength="500" placeholder="ملاحظات (اختياري)">
+                </div>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-sm table-bordered mb-0" style="font-size:.85rem">
-                <thead class="table-light"><tr><th>#</th><th>حضور</th><th>انصراف</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
+                <thead class="table-light"><tr><th>الموظف</th><th>حضور</th><th>انصراف</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
                 <tbody id="customSessionsTable"><tr><td colspan="6" class="text-center text-muted py-3">لا توجد جلسات اليوم</td></tr></tbody>
             </table>
         </div>
@@ -334,8 +372,9 @@
                 </table>
                 <hr>
                 <div class="row g-2 align-items-end" id="addSessionForm">
-                    <div class="col-md-4"><label class="form-label">حضور</label><input type="time" id="ns_in" class="form-control"></div>
-                    <div class="col-md-4"><label class="form-label">انصراف</label><input type="time" id="ns_out" class="form-control"></div>
+                    <div class="col-md-3"><label class="form-label">حضور</label><input type="time" id="ns_in" class="form-control"></div>
+                    <div class="col-md-3"><label class="form-label">انصراف</label><input type="time" id="ns_out" class="form-control"></div>
+                    <div class="col-md-2"><label class="form-label">الساعات المطلوبة</label><input type="number" id="ns_req" class="form-control" step="0.5" min="0" max="24" placeholder="بدون تغيير"></div>
                     <div class="col-md-3"><label class="form-label">ملاحظات</label><input type="text" id="ns_notes" class="form-control"></div>
                     <div class="col-md-1"><button class="btn-primary-custom w-100" onclick="addSession()"><i class="fas fa-plus"></i></button></div>
                 </div>
@@ -357,6 +396,7 @@ function hoursStatusBadge(s) { return s ? (hoursStatusBadges[s] || 'badge-draft'
 // ═══ CUSTOM FLEXIBLE ATTENDANCE WIDGET ══════════════════
 let customTimerInterval = null;
 let customEmployees = [];
+const customSourceLabels = { mobile: 'تطبيق', admin: 'إدارة', manual: 'يدوي' };
 
 async function initCustomAttendance() {
     // Load active employees into the picker; auto-detect current user's employee.
@@ -375,11 +415,40 @@ async function initCustomAttendance() {
     if (!customOnly.length) { document.getElementById('customPunchCard').style.display = 'none'; return; }
 
     document.getElementById('customPunchCard').style.display = '';
-    sel.innerHTML = '<option value="">اختر الموظف</option>' + customOnly.map(e =>
+    const options = '<option value="">اختر الموظف</option>' + customOnly.map(e =>
         `<option value="${e.id}">${e.name} (${e.employee_code})</option>`).join('');
+    sel.innerHTML = options;
+    document.getElementById('cm_emp').innerHTML = options;
 
     const preselect = meId && customOnly.some(e => e.id === meId) ? meId : customOnly[0].id;
     sel.value = String(preselect);
+    document.getElementById('cm_emp').value = String(preselect);
+    await loadCustomSummary();
+}
+
+// Keep the header picker and the manual-entry picker in sync.
+function syncCustomEmp(empId) {
+    if (!empId) return;
+    document.getElementById('customEmpSelect').value = String(empId);
+    document.getElementById('cm_emp').value = String(empId);
+    loadCustomSummary();
+}
+
+// Set the selected employee's daily required hours from the widget.
+async function saveRequiredHours() {
+    const empId = document.getElementById('customEmpSelect').value;
+    if (!empId) { showAlert('اختر الموظف أولاً', 'warning'); return; }
+
+    const input = document.getElementById('custReqHoursInput');
+    const hours = parseFloat(input.value);
+    if (!hours || hours < 0.5 || hours > 24) { showAlert('أدخل عدد ساعات صحيح (0.5 - 24)', 'warning'); return; }
+
+    const r = await apiFetch('/attendance/custom/required-hours', {
+        method: 'POST',
+        body: JSON.stringify({ employee_id: parseInt(empId), daily_required_hours: hours }),
+    });
+    if (!r.success) { showAlert(r.message || 'فشل الحفظ', 'danger'); return; }
+    showAlert(r.message);
     await loadCustomSummary();
 }
 
@@ -403,8 +472,9 @@ async function loadCustomSummary() {
 function renderCustomSummary(d) {
     const workedH = Number(d.total_worked_hours ?? 0).toFixed(2);
     document.getElementById('custWorked').textContent = `${workedH} س`;
-    document.getElementById('custRequired').textContent = `${Number(d.daily_required_hours ?? 0).toFixed(2)} س`;
+    document.getElementById('custReqHoursInput').value = Number(d.daily_required_hours ?? 0) || '';
     document.getElementById('custRemaining').textContent = d.remaining_minutes ?? 0;
+    document.getElementById('cm_req').placeholder = `افتراضي: ${Number(d.daily_required_hours ?? 0).toFixed(2)}`;
 
     const pct = d.daily_required_hours > 0 ? Math.min(100, (Number(d.total_worked_hours ?? 0) / Number(d.daily_required_hours)) * 100) : 0;
     document.getElementById('custProgressBar').style.width = pct.toFixed(1) + '%';
@@ -439,15 +509,17 @@ function renderCustomSummary(d) {
         document.getElementById('btnCustomCheckOut').disabled = true;
     }
 
-    // Sessions table
+    // Sessions table (with employee name)
+    const empName = d.employee_name
+        ?? (document.getElementById('customEmpSelect').selectedOptions[0]?.textContent ?? '-');
     const rows = d.sessions ?? [];
     document.getElementById('customSessionsTable').innerHTML = rows.length ? rows.map((s, i) => `
         <tr>
-            <td>${i + 1}</td>
+            <td class="fw-bold">${empName}</td>
             <td>${s.check_in_time ?? '-'}</td>
             <td>${s.check_out_time ?? '-'}</td>
-            <td class="fw-bold">${s.duration_minutes ? fmtMinutes(s.duration_minutes) : (s.is_open ? '<span class="text-info">جارية</span>' : '-')}</td>
-            <td><small>${{ mobile:'تطبيق', admin:'إدارة', manual:'يدوي' }[s.source] ?? s.source ?? '-'}</small></td>
+            <td>${s.duration_minutes ? fmtMinutes(s.duration_minutes) : (s.is_open ? '<span class="text-info">جارية</span>' : '-')}</td>
+            <td><small>${customSourceLabels[s.source] ?? s.source ?? '-'}</small></td>
             <td><small class="text-muted">${s.notes ?? ''}</small></td>
         </tr>`).join('')
         : '<tr><td colspan="6" class="text-center text-muted py-3">لا توجد جلسات اليوم</td></tr>';
@@ -509,7 +581,7 @@ async function refreshSessionsModal() {
             <td>${s.check_in_time ?? '-'}</td>
             <td>${s.check_out_time ?? '-'}</td>
             <td class="fw-bold">${s.duration_minutes ? fmtMinutes(s.duration_minutes) : (s.is_open ? '<span class="text-info">جارية</span>' : '-')}</td>
-            <td><small>${{ mobile:'تطبيق', admin:'إدارة', manual:'يدوي' }[s.source] ?? s.source ?? '-'}</small></td>
+            <td><small>${customSourceLabels[s.source] ?? s.source ?? '-'}</small></td>
             <td><small class="text-muted">${s.notes ?? '-'}</small></td>
             <td>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteSession(${s.id})" title="حذف الجلسة"><i class="fas fa-trash"></i></button>
@@ -522,12 +594,45 @@ async function addSession() {
     const body = {};
     if (document.getElementById('ns_in').value) body.check_in_time = document.getElementById('ns_in').value;
     if (document.getElementById('ns_out').value) body.check_out_time = document.getElementById('ns_out').value;
+    if (document.getElementById('ns_req').value !== '') body.required_hours = parseFloat(document.getElementById('ns_req').value);
     if (document.getElementById('ns_notes').value) body.notes = document.getElementById('ns_notes').value;
     const r = await apiFetch(`/attendance/${sessionsAttId}/sessions`, { method: 'POST', body: JSON.stringify(body) });
     if (!r.success) { showAlert(r.message || 'فشل الإضافة', 'danger'); return; }
-    ['ns_in','ns_out','ns_notes'].forEach(id => document.getElementById(id).value = '');
+    ['ns_in','ns_out','ns_req','ns_notes'].forEach(id => document.getElementById(id).value = '');
     showAlert('تمت إضافة الجلسة');
     await Promise.all([refreshSessionsModal(), loadCustomSummary(), loadAttendance()]);
+}
+
+// Manual entry from the flexible-attendance widget (date + in/out times + required hours)
+async function saveManualSession() {
+    const empId = document.getElementById('cm_emp').value;
+    if (!empId) { showAlert('اختر الموظف أولاً', 'warning'); return; }
+
+    const date = document.getElementById('cm_date').value;
+    const checkIn = document.getElementById('cm_in').value;
+    const checkOut = document.getElementById('cm_out').value;
+
+    if (!checkIn || !checkOut) { showAlert('أدخل وقت الحضور ووقت الانصراف', 'warning'); return; }
+
+    const body = {
+        employee_id: parseInt(empId),
+        check_in_time: checkIn,
+        check_out_time: checkOut,
+    };
+    if (date) body.date = date;
+    if (document.getElementById('cm_req').value !== '') body.required_hours = parseFloat(document.getElementById('cm_req').value);
+    if (document.getElementById('cm_notes').value) body.notes = document.getElementById('cm_notes').value;
+
+    const r = await apiFetch('/attendance/custom/manual-session', { method: 'POST', body: JSON.stringify(body) });
+    if (!r.success) { showAlert(r.message || 'فشل تسجيل الجلسة', 'danger'); return; }
+
+    const d = r.data ?? {};
+    const statusText = d.hours_status === 'shortfall' ? ' — نقص ساعات'
+        : d.hours_status === 'overtime' ? ' — ساعات إضافية'
+        : d.hours_status === 'fulfilled' ? ' — استكمل الساعات' : '';
+    showAlert(`${r.message}${statusText} | إجمالي اليوم: ${Number(d.total_worked_hours ?? 0).toFixed(2)} ساعة`);
+    ['cm_in','cm_out','cm_req','cm_notes'].forEach(id => document.getElementById(id).value = '');
+    await Promise.all([loadCustomSummary(), loadAttendance()]);
 }
 
 async function deleteSession(logId) {

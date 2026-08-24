@@ -173,6 +173,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/leave-requests',             [AttendanceController::class, 'leaveRequests']);
         Route::get('/monthly-report/{empId}',     [AttendanceController::class, 'monthlyReport']);
         Route::get('/custom/today',               [AttendanceController::class, 'customToday']);
+        Route::post('/custom/manual-session',     [AttendanceController::class, 'customManualSession']);
+        Route::post('/custom/required-hours',     [AttendanceController::class, 'customSetRequiredHours']);
         Route::get('/',                           [AttendanceController::class, 'index']);
         Route::post('/',                          [AttendanceController::class, 'store']);
         Route::get('/{id}',                       [AttendanceController::class, 'show']);
