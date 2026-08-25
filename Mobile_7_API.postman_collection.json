@@ -1,0 +1,2048 @@
+{
+	"info": {
+		"_postman_id": "b7e4c1d9-7f2a-4c8e-9d3b-mobile7thekahr",
+		"name": "TheKahr HR API — Mobile 7",
+		"description": "كوليكشن جاهز لبوستمان لكل الإندبوينتات المستخدمة في تطبيق الموبايل (Mobile 7)\n\n- متغير `base_url` افتراضياً: `http://localhost:8000/api`\n- متغير `token` بيتظبط أوتوماتيك بعد نجاح طلب Login\n- متغير `employee_id` بيتظبط من رد الـ Login كذلك\n\nكل الريكويستات المحمية تستخدم Bearer Token على مستوى الكوليكشن.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "thekahr"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api"
+		},
+		{
+			"key": "token",
+			"value": ""
+		},
+		{
+			"key": "employee_id",
+			"value": "1"
+		},
+		{
+			"key": "other_employee_id",
+			"value": "2"
+		},
+		{
+			"key": "group_id",
+			"value": "1"
+		},
+		{
+			"key": "message_id",
+			"value": "1"
+		},
+		{
+			"key": "notification_id",
+			"value": "1"
+		},
+		{
+			"key": "item_id",
+			"value": "1"
+		},
+		{
+			"key": "sale_id",
+			"value": "1"
+		},
+		{
+			"key": "attendance_id",
+			"value": "1"
+		},
+		{
+			"key": "month",
+			"value": "8"
+		},
+		{
+			"key": "year",
+			"value": "2026"
+		},
+		{
+			"key": "email",
+			"value": "admin@thekahr.com"
+		},
+		{
+			"key": "password",
+			"value": "password"
+		}
+	],
+	"item": [
+		{
+			"name": "🔐 Auth",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+									"",
+									"const json = pm.response.json();",
+									"if (json.success && json.data && json.data.token) {",
+									"    pm.collectionVariables.set(\"token\", json.data.token);",
+									"    console.log(\"✅ Token saved\");",
+									"}",
+									"if (json.data && json.data.user && json.data.user.id) {",
+									"    pm.collectionVariables.set(\"user_id\", json.data.user.id);",
+									"}",
+									"if (json.data && json.data.employee && json.data.employee.id) {",
+									"    pm.collectionVariables.set(\"employee_id\", json.data.employee.id);",
+									"    console.log(\"✅ employee_id saved: \" + json.data.employee.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "تسجيل الدخول — بيرجع token وبيانات المستخدم والموظف.\nسكريبت التست بيحفظ التوكن و employee_id أوتوماتيك."
+					},
+					"response": []
+				},
+				{
+					"name": "Me (بياناتي وصلاحياتي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"اسم جديد\",\n    \"phone\": \"01000000000\",\n    \"onesignal_player_id\": \"xxxxxxxx-xxxx-xxxx\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/profile",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"current_password\": \"{{password}}\",\n    \"new_password\": \"newpassword123\",\n    \"new_password_confirmation\": \"newpassword123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/change-password",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"change-password"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Register Device (OneSignal)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"onesignal_player_id\": \"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\n    \"device_type\": \"android\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/client-devices",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"client-devices"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unregister Device",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/client-devices",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"client-devices"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/logout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"logout"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👤 Me (الموبايل)",
+			"item": [
+				{
+					"name": "My Tabs (التابات المسموحة لي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/me/tabs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"me",
+								"tabs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Financials (معاملاتي المالية)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/me/financials?month={{month}}&year={{year}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"me",
+								"financials"
+							],
+							"query": [
+								{
+									"key": "month",
+									"value": "{{month}}"
+								},
+								{
+									"key": "year",
+									"value": "{{year}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Points (سجل نقاطي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/me/points?month={{month}}&year={{year}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"me",
+								"points"
+							],
+							"query": [
+								{
+									"key": "month",
+									"value": "{{month}}",
+									"disabled": true
+								},
+								{
+									"key": "year",
+									"value": "{{year}}",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Departments",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/departments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"departments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Employees Mobile List (للمحادثات)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/employees/mobile-list",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"employees",
+								"mobile-list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Manager (مديري المباشر)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/employees/me/manager",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"employees",
+								"me",
+								"manager"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Subordinates (مرؤوسياي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/employees/me/subordinates",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"employees",
+								"me",
+								"subordinates"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Peers (زملائي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/employees/peers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"employees",
+								"peers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Current Shift",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/employee-shifts/current/{{employee_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"employee-shifts",
+								"current",
+								"{{employee_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🕒 Attendance (الحضور والانصراف)",
+			"item": [
+				{
+					"name": "Check In",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "employee_id",
+									"value": "{{employee_id}}",
+									"type": "text"
+								},
+								{
+									"key": "latitude",
+									"value": "30.0444",
+									"type": "text"
+								},
+								{
+									"key": "longitude",
+									"value": "31.2357",
+									"type": "text"
+								},
+								{
+									"key": "photo",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/attendance/check-in",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"check-in"
+							]
+						},
+						"description": "تسجيل حضور. employee_id مطلوب، و latitude/longitude/photo اختيارية.\nلو الموظف نظام حضور مرن (custom) بينده startSession، وإلا الحضور العادي بالشيفت."
+					},
+					"response": []
+				},
+				{
+					"name": "Check Out",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "employee_id",
+									"value": "{{employee_id}}",
+									"type": "text"
+								},
+								{
+									"key": "latitude",
+									"value": "30.0444",
+									"type": "text"
+								},
+								{
+									"key": "longitude",
+									"value": "31.2357",
+									"type": "text"
+								},
+								{
+									"key": "photo",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/attendance/check-out",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"check-out"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Today Summary (ملخص النهاردة)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/attendance/today-summary",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"today-summary"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Custom Attendance Today (حضور مرن)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/attendance/custom/today?employee_id={{employee_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"custom",
+								"today"
+							],
+							"query": [
+								{
+									"key": "employee_id",
+									"value": "{{employee_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "My Records (سجلاتي)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/attendance/my-records?page=1&per_page=15&month={{month}}&year={{year}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"my-records"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "month",
+									"value": "{{month}}"
+								},
+								{
+									"key": "year",
+									"value": "{{year}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Monthly Report (تقرير شهري)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/attendance/monthly-report/{{employee_id}}?month={{month}}&year={{year}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"monthly-report",
+								"{{employee_id}}"
+							],
+							"query": [
+								{
+									"key": "month",
+									"value": "{{month}}"
+								},
+								{
+									"key": "year",
+									"value": "{{year}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Request Leave (طلب إجازة)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"request_type\": \"leave\",\n    \"from_date\": \"2026-09-01\",\n    \"to_date\": \"2026-09-03\",\n    \"reason\": \"إجازة سنوية\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/attendance/request-leave",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"request-leave"
+							]
+						},
+						"description": "request_type: sick | leave | late | early | excuse\nemployee_id اختياري (للمدير فقط بالنيابة عن موظف آخر)"
+					},
+					"response": []
+				},
+				{
+					"name": "Leave Requests (طلبات الإجازات)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/attendance/leave-requests?status=pending&page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"attendance",
+								"leave-requests"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "💬 Messages (الرسائل المباشرة)",
+			"item": [
+				{
+					"name": "Conversations List (+Groups)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/messages?include_groups=true&page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages"
+							],
+							"query": [
+								{
+									"key": "include_groups",
+									"value": "true"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unread Count",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/messages/unread-count",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages",
+								"unread-count"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Send Direct Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"receiver_id\": {{other_employee_id}},\n    \"message\": \"أهلاً 👋\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/messages",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Send Group Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"group_id\": {{group_id}},\n    \"message\": \"رسالة للمجموعة\",\n    \"message_type\": \"text\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/messages",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Conversation With Employee",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/messages/{{other_employee_id}}?per_page=30&page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages",
+								"{{other_employee_id}}"
+							],
+							"query": [
+								{
+									"key": "per_page",
+									"value": "30"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Read",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/messages/{{other_employee_id}}/read",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages",
+								"{{other_employee_id}}",
+								"read"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Message",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/messages/{{message_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"messages",
+								"{{message_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👥 Chat Groups",
+			"item": [
+				{
+					"name": "My Groups",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups/my",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"my"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Group",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"فريق الفرع الرئيسي\",\n    \"description\": \"مجموعة تواصل الفريق\",\n    \"member_ids\": [{{other_employee_id}}]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/chat-groups",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "All Groups (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups?page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Group Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Group",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"اسم معدّل\",\n    \"description\": \"وصف معدّل\",\n    \"status\": \"active\",\n    \"member_ids\": [{{other_employee_id}}]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Group Messages",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}/messages?per_page=30&page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}",
+								"messages"
+							],
+							"query": [
+								{
+									"key": "per_page",
+									"value": "30"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Group Read",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}/read",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}",
+								"read"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Members",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee_ids\": [{{other_employee_id}}]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}/members",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}",
+								"members"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Member",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}/members/{{other_employee_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}",
+								"members",
+								"{{other_employee_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Member Role",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"admin\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}/members/{{other_employee_id}}/role",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}",
+								"members",
+								"{{other_employee_id}}",
+								"role"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Group (Archive)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/chat-groups/{{group_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"chat-groups",
+								"{{group_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔔 Notifications",
+			"item": [
+				{
+					"name": "List (Inbox)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/notifications?tab=inbox&page=1&per_page=20",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications"
+							],
+							"query": [
+								{
+									"key": "tab",
+									"value": "inbox"
+								},
+								{
+									"key": "is_read",
+									"value": "false",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unread Count",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/notifications/unread-count",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications",
+								"unread-count"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Read",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/notifications/{{notification_id}}/read",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications",
+								"{{notification_id}}",
+								"read"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark All Read",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/notifications/read-all",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications",
+								"read-all"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Notification",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/notifications/{{notification_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications",
+								"{{notification_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Send Notification (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"employee_ids\": [{{other_employee_id}}],\n    \"title\": \"تنبيه هام\",\n    \"message\": \"محتوى الإشعار\",\n    \"notification_type\": \"hr_direct\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/notifications/send",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"notifications",
+								"send"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "⏳ Near-Expiry Items (منتجات قاربة الانتهاء)",
+			"item": [
+				{
+					"name": "List Items",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-items?page=1&per_page=24&in_stock=true",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-items"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "branch",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "expiry_status",
+									"value": "soon",
+									"disabled": true
+								},
+								{
+									"key": "in_stock",
+									"value": "true"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "24"
+								}
+							]
+						},
+						"description": "expiry_status: expired | critical | soon | ok"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "عصير برتقال 1 لتر",
+									"type": "text"
+								},
+								{
+									"key": "expiry_date",
+									"value": "2026-09-15",
+									"type": "text"
+								},
+								{
+									"key": "branch",
+									"value": "الفرع الرئيسي",
+									"type": "text"
+								},
+								{
+									"key": "unit_price",
+									"value": "45.5",
+									"type": "text"
+								},
+								{
+									"key": "incentive_amount",
+									"value": "10",
+									"type": "text"
+								},
+								{
+									"key": "stock_quantity",
+									"value": "50",
+									"type": "text"
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/near-expiry-items",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-items"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "unit_price",
+									"value": "40",
+									"type": "text"
+								},
+								{
+									"key": "stock_quantity",
+									"value": "60",
+									"type": "text"
+								},
+								{
+									"key": "_method",
+									"value": "PUT",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/near-expiry-items/{{item_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-items",
+								"{{item_id}}"
+							]
+						},
+						"description": "للتعديل عبر form-data لازم _method=PUT (multipart لا يدعم PUT مباشرة). للتعديل بدون صور ممكن JSON عادي."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-items/{{item_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-items",
+								"{{item_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "💰 Near-Expiry Sales (مبيعات قاربة الانتهاء)",
+			"item": [
+				{
+					"name": "Leaderboard",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales/leaderboard?month={{month}}&year={{year}}&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales",
+								"leaderboard"
+							],
+							"query": [
+								{
+									"key": "month",
+									"value": "{{month}}"
+								},
+								{
+									"key": "year",
+									"value": "{{year}}"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales?status=pending&month={{month}}&year={{year}}&page=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales"
+							],
+							"query": [
+								{
+									"key": "employee_id",
+									"value": "{{employee_id}}",
+									"disabled": true
+								},
+								{
+									"key": "item_id",
+									"value": "{{item_id}}",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "pending",
+									"disabled": true
+								},
+								{
+									"key": "month",
+									"value": "{{month}}",
+									"disabled": true
+								},
+								{
+									"key": "year",
+									"value": "{{year}}",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Log Sale (تسجيل بيع)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"near_expiry_item_id\": {{item_id}},\n    \"quantity_sold\": 2,\n    \"invoice_number\": \"INV-1023\",\n    \"invoice_date\": \"2026-08-24\",\n    \"branch\": \"الفرع الرئيسي\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales"
+							]
+						},
+						"description": "الموظف يسجل لنفسه. employee_id اختياري للمدير (لنفس نطاق مرؤوسيه). invoice_date لازم يكون تاريخ اليوم أو قبله."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales/{{sale_id}}/approve",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales",
+								"{{sale_id}}",
+								"approve"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales/{{sale_id}}/reject",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales",
+								"{{sale_id}}",
+								"reject"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Sale",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/near-expiry-sales/{{sale_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"near-expiry-sales",
+								"{{sale_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🏆 Ideal Employee (الموظف المثالي)",
+			"item": [
+				{
+					"name": "Get Ideal Employees",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/ideal?month={{month}}&year={{year}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ideal"
+							],
+							"query": [
+								{
+									"key": "month",
+									"value": "{{month}}"
+								},
+								{
+									"key": "year",
+									"value": "{{year}}"
+								}
+							]
+						},
+						"description": "بيرجع موظف الشهر + موظفي الأسابيع الأربعة/الخمسة للشهر."
+					},
+					"response": []
+				},
+				{
+					"name": "Set Ideal Employee (Month/Week)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"period\": \"month\",\n    \"month\": {{month}},\n    \"year\": {{year}},\n    \"employee_id\": {{other_employee_id}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/ideal",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ideal"
+							]
+						},
+						"description": "period: month | week\nلو period=week ضيف week (1..6).\nيبعت employee_id=null لإزالة الاختيار."
+					},
+					"response": []
+				},
+				{
+					"name": "Clear Ideal Employee",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"period\": \"week\",\n    \"month\": {{month}},\n    \"year\": {{year}},\n    \"week\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/ideal",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ideal"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"protocolProfileBehavior": {}
+}

@@ -38,8 +38,12 @@ class NearExpiryItem extends Model
         return $this->image ? asset('storage/' . $this->image) : null;
     }
 
-    public function getDaysToExpiryAttribute(): int
+    public function getDaysToExpiryAttribute(): ?int
     {
+        if (! $this->expiry_date) {
+            return null;
+        }
+
         return now()->startOfDay()->diffInDays($this->expiry_date->copy()->startOfDay(), false);
     }
 
@@ -49,6 +53,10 @@ class NearExpiryItem extends Model
     public function getExpiryStatusAttribute(): string
     {
         $days = $this->days_to_expiry;
+
+        if ($days === null) {
+            return 'unknown';
+        }
 
         if ($days < 0) {
             return 'expired';
