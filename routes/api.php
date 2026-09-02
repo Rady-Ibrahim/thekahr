@@ -170,6 +170,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('attendance')->group(function () {
         Route::get('/today-summary',              [AttendanceController::class, 'todaySummary']);
         Route::get('/my-records',                 [AttendanceController::class, 'myRecords']);
+        Route::get('/my-daily-log',               [AttendanceController::class, 'myDailyLog']);
         Route::get('/leave-requests',             [AttendanceController::class, 'leaveRequests']);
         Route::get('/monthly-report/{empId}',     [AttendanceController::class, 'monthlyReport']);
         Route::get('/custom/today',               [AttendanceController::class, 'customToday']);

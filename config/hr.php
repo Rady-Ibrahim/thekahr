@@ -145,6 +145,9 @@ return [
         'late_threshold_minutes' => 15,
         'half_day_deduction_after_minutes' => 120,
         'timezone' => 'Africa/Cairo',
+        // If an employee forgets to check out, the open shift is auto-closed this many
+        // hours after check-in (prevents stuck open shifts / duplicate check-ins).
+        'auto_close_after_hours' => 20,
     ],
 
     // Salary Calculation Settings

@@ -281,6 +281,35 @@ class AttendanceController
         return response()->json(['success' => true, 'message' => 'تم حذف سجل الحضور']);
     }
 
+    /**
+     * Auto-close open attendance records whose check-in is older than the configured
+     * threshold (e.g. an employee forgot to check out), by setting the check-out time
+     * to check-in + threshold hours. Recomputes penalties/hours afterwards.
+     */
+    private function autoCloseOpenShifts(int $employeeId): void
+    {
+        $hours   = (int) Config::get('hr.working_hours.auto_close_after_hours', 20);
+        $cutoff  = now()->subHours($hours);
+
+        $open = Attendance::where('employee_id', $employeeId)
+            ->whereNotNull('check_in_time')
+            ->whereNull('check_out_time')
+            ->get();
+
+        foreach ($open as $attendance) {
+            $checkIn = $attendance->check_in_time instanceof Carbon
+                ? $attendance->check_in_time
+                : Carbon::parse($attendance->attendance_date->toDateString() . ' ' . $attendance->check_in_time);
+
+            if ($checkIn->greaterThan($cutoff)) {
+                continue;
+            }
+
+            $attendance->update(['check_out_time' => $checkIn->copy()->addHours($hours)->toTimeString()]);
+            $this->penaltyService->processAttendance($attendance->fresh());
+        }
+    }
+
     public function checkIn(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -327,6 +356,11 @@ class AttendanceController
 
         // ── Standard shift-based attendance (unchanged behavior) ──
         $today  = today()->toDateString();
+
+        // If the employee forgot to check out, auto-close any stale open shift so the
+        // new check-in isn't blocked and old records don't stay open forever.
+        $this->autoCloseOpenShifts($validated['employee_id']);
+
         $exists = Attendance::where('employee_id', $validated['employee_id'])
                             ->where('attendance_date', $today)
                             ->whereNotNull('check_in_time')
@@ -427,11 +461,24 @@ class AttendanceController
             ]);
         }
 
-        // ── Standard shift-based attendance (unchanged behavior) ──
+        // ── Standard shift-based attendance ──
+        // For night shifts that cross midnight, the check-out may happen on the next
+        // calendar day while the attendance record was created the previous day.
+        // Find the latest attendance record that is still open (checked in, not yet
+        // checked out), falling back to today's record for backward compatibility.
         $today  = today()->toDateString();
+
         $record = Attendance::where('employee_id', $validated['employee_id'])
-                            ->where('attendance_date', $today)
+                            ->whereNotNull('check_in_time')
+                            ->whereNull('check_out_time')
+                            ->orderByDesc('attendance_date')
                             ->first();
+
+        if (!$record) {
+            $record = Attendance::where('employee_id', $validated['employee_id'])
+                                ->where('attendance_date', $today)
+                                ->first();
+        }
 
         if (!$record || !$record->check_in_time) {
             return response()->json(['success' => false, 'message' => 'لم يتم تسجيل الحضور بعد'], 422);
@@ -798,6 +845,83 @@ class AttendanceController
         return response()->json([
             'success'    => true,
             'data'       => $records,
+            'statistics' => $stats,
+        ]);
+    }
+
+    public function myDailyLog(Request $request): JsonResponse
+    {
+        $employee = $this->currentEmployee();
+
+        if (!$employee) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'لا يوجد ملف موظف مرتبط بحسابك',
+            ], 404);
+        }
+
+        $month = (int) $request->get('month', now()->month);
+        $year  = (int) $request->get('year', now()->year);
+
+        $start = Carbon::createFromDate($year, $month, 1);
+        $end   = $start->copy()->endOfMonth();
+
+        $records = Attendance::with('shift')
+            ->where('employee_id', $employee->id)
+            ->where('attendance_date', '>=', $start->toDateString())
+            ->where('attendance_date', '<=', $end->toDateString())
+            ->orderBy('attendance_date')
+            ->get()
+            ->keyBy(fn ($r) => $r->attendance_date instanceof Carbon
+                ? $r->attendance_date->toDateString()
+                : $r->attendance_date
+            );
+
+        $days = [];
+        for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
+            $key = $day->toDateString();
+            $r   = $records->get($key);
+
+            $days[] = [
+                'date'              => $key,
+                'day_name'          => $day->isoFormat('dddd'),
+                'status'            => $r?->status ?? 'absent',
+                'check_in_time'     => $r?->check_in_time,
+                'check_out_time'    => $r?->check_out_time,
+                'shift_name'        => $r?->shift?->name,
+                'shift_start'       => $r?->shift?->start_time,
+                'shift_end'         => $r?->shift?->end_time,
+                'late_minutes'      => $r?->late_minutes ?? 0,
+                'early_exit_minutes'=> $r?->early_exit_minutes ?? 0,
+                'actual_worked_hours'=> $r?->actual_worked_hours ?? 0.0,
+                'deduction_amount'  => $r?->deduction_amount ?? 0.0,
+            ];
+        }
+
+        $present   = collect($days)->where('status', 'present')->count()
+                   + collect($days)->where('status', 'late')->count();
+        $absent    = collect($days)->where('status', 'absent')->count();
+        $late      = collect($days)->where('status', 'late')->count();
+        $onLeave   = collect($days)->where('status', 'on_leave')->count();
+        $daysTotal = collect($days);
+
+        $stats = [
+            'month'                 => $month,
+            'year'                  => $year,
+            'working_days'          => $this->getWorkingDaysInMonth($month, $year),
+            'present'               => $present,
+            'absent'                => $absent,
+            'late'                  => $late,
+            'on_leave'              => $onLeave,
+            'total_hours'           => round($daysTotal->sum('actual_worked_hours'), 2),
+            'total_late_minutes'    => $daysTotal->sum('late_minutes'),
+            'total_early_exit_minutes' => $daysTotal->sum('early_exit_minutes'),
+            'total_deduction_amount'   => round($daysTotal->sum('deduction_amount'), 2),
+        ];
+
+        return response()->json([
+            'success'    => true,
+            'data'       => $days,
             'statistics' => $stats,
         ]);
     }
