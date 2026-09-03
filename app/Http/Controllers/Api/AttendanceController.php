@@ -293,6 +293,63 @@ class AttendanceController
         $this->penaltyService->autoCloseForgotten($employeeId);
     }
 
+    /**
+     * Validation rule accepting an optional timestamp in either
+     * "Y-m-d H:i:s" (full datetime) or "H:i:s" (time-of-day) format.
+     */
+    private function customTimestampRule(): \Closure
+    {
+        return function (string $attribute, $value, $fail) {
+            if ($value === null || trim((string) $value) === '') {
+                return;
+            }
+
+            $value = (string) $value;
+
+            $full = \DateTime::createFromFormat('Y-m-d H:i:s', $value);
+            $fullErrors = \DateTime::getLastErrors();
+            $fullValid = $full !== false && (!$fullErrors || ($fullErrors['warning_count'] === 0 && $fullErrors['error_count'] === 0));
+
+            $time = \DateTime::createFromFormat('H:i:s', $value);
+            $timeErrors = \DateTime::getLastErrors();
+            $timeValid = $time !== false && (!$timeErrors || ($timeErrors['warning_count'] === 0 && $timeErrors['error_count'] === 0));
+
+            if (!$fullValid && !$timeValid) {
+                $fail('The :attribute must be in Y-m-d H:i:s or H:i:s format.');
+            }
+        };
+    }
+
+    /**
+     * Resolve an optional custom timestamp (from request fields like
+     * custom_check_in_time / check_in_time) for use DURING local/testing/staging
+     * environments only. Accepts "YYYY-MM-DD HH:mm:ss" (full datetime) or
+     * "HH:mm:ss" (time-of-day applied to today). Returns null when not applicable,
+     * so the caller falls back to Carbon::now().
+     */
+    private function resolveCustomTimestamp(?string $value): ?Carbon
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        if (!app()->environment(['local', 'testing', 'staging'])) {
+            return null;
+        }
+
+        try {
+            if (str_contains($value, ' ')) {
+                // Full datetime "Y-m-d H:i:s".
+                return Carbon::createFromFormat('Y-m-d H:i:s', $value);
+            }
+
+            // Time-of-day only "H:i:s" -> applied to today.
+            return Carbon::createFromFormat('H:i:s', $value);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     public function checkIn(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -300,9 +357,14 @@ class AttendanceController
             'latitude'    => 'nullable|numeric',
             'longitude'   => 'nullable|numeric',
             'photo'       => 'nullable|image|max:3072',
+            'custom_check_in_time' => ['nullable', $this->customTimestampRule()],
+            'check_in_time' => ['nullable', $this->customTimestampRule()],
         ]);
 
         $employee = Employee::findOrFail($validated['employee_id']);
+
+        // Optional timestamp override for local/testing/staging environments.
+        $customNow = $this->resolveCustomTimestamp($validated['custom_check_in_time'] ?? $validated['check_in_time'] ?? null);
 
         // ── Custom flexible attendance: sequential sessions per day ──
         if ($employee->isCustomAttendance()) {
@@ -338,7 +400,7 @@ class AttendanceController
         }
 
         // ── Standard shift-based attendance (unchanged behavior) ──
-        $today  = today()->toDateString();
+        $today  = ($customNow ?? now())->toDateString();
 
         // If the employee forgot to check out, auto-close any stale open shift so the
         // new check-in isn't blocked and old records don't stay open forever.
@@ -354,7 +416,7 @@ class AttendanceController
             return response()->json(['success' => false, 'message' => 'لديك جلسة عمل مفتوحة حالياً، يجب تسجيل الانصراف أولاً'], 422);
         }
 
-        $now = now();
+        $now = $customNow ?? now();
         $date = Carbon::parse($today);
 
         $shift = $this->penaltyService->resolveShift($employee, $date, $now);
@@ -415,9 +477,14 @@ class AttendanceController
             'latitude'    => 'nullable|numeric',
             'longitude'   => 'nullable|numeric',
             'photo'       => 'nullable|image|max:3072',
+            'custom_check_out_time' => ['nullable', $this->customTimestampRule()],
+            'check_out_time' => ['nullable', $this->customTimestampRule()],
         ]);
 
         $employee = Employee::findOrFail($validated['employee_id']);
+
+        // Optional timestamp override for local/testing/staging environments.
+        $customNow = $this->resolveCustomTimestamp($validated['custom_check_out_time'] ?? $validated['check_out_time'] ?? null);
 
         // ── Custom flexible attendance: close the open session & re-aggregate ──
         if ($employee->isCustomAttendance()) {
@@ -474,7 +541,7 @@ class AttendanceController
         }
 
         $checkIn = Carbon::parse($today . ' ' . $record->check_in_time);
-        $checkOut = now();
+        $checkOut = $customNow ?? now();
         $date = Carbon::parse($today);
 
         $photoPath = null;

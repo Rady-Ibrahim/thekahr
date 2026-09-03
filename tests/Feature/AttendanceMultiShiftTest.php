@@ -60,11 +60,11 @@ class AttendanceMultiShiftTest extends TestCase
         ]);
     }
 
-    private function checkIn(Employee $employee): array
+    private function checkIn(Employee $employee, array $extra = []): array
     {
-        $request = Request::create('/api/attendance/check-in', 'POST', [
+        $request = Request::create('/api/attendance/check-in', 'POST', array_merge([
             'employee_id' => $employee->id,
-        ], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        ], $extra), [], [], ['HTTP_ACCEPT' => 'application/json']);
 
         $controller = new AttendanceController(app(\App\Services\AttendancePenaltyService::class));
         $response = $controller->checkIn($request);
@@ -72,11 +72,11 @@ class AttendanceMultiShiftTest extends TestCase
         return ['status' => $response->getStatusCode(), 'payload' => json_decode($response->getContent(), true)];
     }
 
-    private function checkOut(Employee $employee): array
+    private function checkOut(Employee $employee, array $extra = []): array
     {
-        $request = Request::create('/api/attendance/check-out', 'POST', [
+        $request = Request::create('/api/attendance/check-out', 'POST', array_merge([
             'employee_id' => $employee->id,
-        ], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        ], $extra), [], [], ['HTTP_ACCEPT' => 'application/json']);
 
         $controller = new AttendanceController(app(\App\Services\AttendancePenaltyService::class));
         $response = $controller->checkOut($request);
@@ -277,5 +277,57 @@ class AttendanceMultiShiftTest extends TestCase
         $this->assertNull($newRecord->check_out_time);
 
         Carbon::setTestNow(null);
+    }
+
+    public function test_custom_check_in_timestamp_full_datetime_override(): void
+    {
+        // Test environment is "testing" -> the custom override must be honored.
+        $emp = $this->makeEmployee();
+        $this->makeShift('Shift', '08:00:00', '20:00:00');
+        $this->assignShift($emp, \App\Models\Shift::first());
+
+        // No Carbon::setTestNow: the override supplies both date and time.
+        $in = $this->checkIn($emp, ['custom_check_in_time' => '2026-09-22 08:30:00']);
+        $this->assertSame(200, $in['status']);
+        $this->assertTrue($in['payload']['success']);
+
+        $record = Attendance::where('employee_id', $emp->id)->where('attendance_date', '2026-09-22')->first();
+        $this->assertNotNull($record);
+        $this->assertSame('08:30:00', $record->check_in_time);
+        $this->assertSame('2026-09-22', $record->attendance_date->toDateString());
+    }
+
+    public function test_custom_check_out_timestamp_applies_to_open_record(): void
+    {
+        $emp = $this->makeEmployee();
+        $this->makeShift('Shift', '08:00:00', '17:00:00');
+        $this->assignShift($emp, \App\Models\Shift::first());
+
+        $in = $this->checkIn($emp, ['custom_check_in_time' => '2026-09-22 08:00:00']);
+        $this->assertSame(200, $in['status']);
+
+        $out = $this->checkOut($emp, ['custom_check_out_time' => '2026-09-22 17:00:00']);
+        $this->assertSame(200, $out['status']);
+        $this->assertTrue($out['payload']['success']);
+
+        $record = Attendance::where('employee_id', $emp->id)->where('attendance_date', '2026-09-22')->first();
+        $this->assertSame('17:00:00', $record->check_out_time);
+    }
+
+    public function test_custom_check_in_time_only_applies_to_today(): void
+    {
+        $emp = $this->makeEmployee();
+        $this->makeShift('Shift', '08:00:00', '20:00:00');
+        $this->assignShift($emp, \App\Models\Shift::first());
+
+        $today = now()->toDateString();
+
+        $in = $this->checkIn($emp, ['check_in_time' => '09:15:00']);
+        $this->assertSame(200, $in['status']);
+        $this->assertTrue($in['payload']['success']);
+
+        $record = Attendance::where('employee_id', $emp->id)->where('attendance_date', $today)->first();
+        $this->assertNotNull($record);
+        $this->assertSame('09:15:00', $record->check_in_time);
     }
 }
