@@ -11,21 +11,215 @@ use Illuminate\Support\Facades\Config;
 
 class AttendancePenaltyService
 {
-    public function resolveShift(Employee $employee, Carbon $date): ?Shift
-    {
-        $assignment = EmployeeShift::where('employee_id', $employee->id)
-            ->active($date)
-            ->first();
+    public const AUTO_CLOSE_GRACE_HOURS = 4;
 
-        if ($assignment) {
+    /**
+     * Dynamically resolve the shift that matches the employee's check-in time.
+     *
+     * Priority order:
+     *  1. An active assignment bound to the employee whose time window contains
+     *     the given check-in time (supports shift rotations per employee).
+     *  2. An active assignment bound to the employee (any shift, fallback).
+     *  3. Any active shift in the system whose time window contains the check-in
+     *     time (fully dynamic, supports cross-employee handovers/rotations).
+     *  4. The first active shift as a default.
+     *
+     * @param Carbon|null $checkInTime When provided, the shift window is matched
+     *                                 against this moment instead of the date bounds.
+     */
+    public function resolveShift(Employee $employee, Carbon $date, ?Carbon $checkInTime = null): ?Shift
+    {
+        $checkMoment = $checkInTime ?? Carbon::parse('23:59:59')->setDateFrom($date);
+
+        $assignments = EmployeeShift::with('shift')
+            ->where('employee_id', $employee->id)
+            ->active($date)
+            ->get();
+
+        // 1) Employee's assigned shift matching the check-in moment.
+        foreach ($assignments as $assignment) {
+            if ($this->timeInShiftWindow($assignment->shift, $checkMoment)) {
+                return $assignment->shift;
+            }
+        }
+
+        // 2) First assigned shift regardless of window.
+        if ($assignment = $assignments->first()) {
             return $assignment->shift;
         }
 
-        if ($defaultShift = Shift::where('is_active', true)->first()) {
+        // 3) Any active shift whose window contains the check-in moment.
+        $activeShifts = Shift::with(['lateRules', 'earlyExitRules'])
+            ->where('is_active', true)
+            ->get();
+
+        foreach ($activeShifts as $shift) {
+            if ($this->timeInShiftWindow($shift, $checkMoment)) {
+                return $shift;
+            }
+        }
+
+        // 4) Default active shift.
+        if ($defaultShift = $activeShifts->first()) {
             return $defaultShift;
         }
 
         return null;
+    }
+
+    /**
+     * Whether a moment falls within a shift's time window, handling overnight
+     * (crossing-midnight) shifts such as 17:00 -> 05:00.
+     */
+    public function timeInShiftWindow(Shift $shift, Carbon $moment): bool
+    {
+        if ($shift->start_time === null || $shift->end_time === null) {
+            return false;
+        }
+
+        $start = Carbon::parse($shift->start_time);
+        $end = Carbon::parse($shift->end_time);
+        $time = $moment->copy()->startOfDay()->addMinutes($moment->hour * 60 + $moment->minute);
+
+        if ($end->greaterThan($start)) {
+            // Same-day shift (e.g. 08:00 -> 17:00).
+            return $time->between($start, $end, true);
+        }
+
+        // Overnight shift (e.g. 17:00 -> 05:00): window spans midnight.
+        return $time->gte($start) || $time->lte($end);
+    }
+
+    /**
+     * The scheduled end of a shift for a given attendance date, expressed as a
+     * Carbon datetime. For overnight shifts the end lands on the next calendar day.
+     */
+    public function shiftEndAt(Shift $shift, Carbon $date): ?Carbon
+    {
+        if ($shift->end_time === null) {
+            return null;
+        }
+
+        $start = Carbon::parse($shift->start_time);
+        $end = Carbon::parse($shift->end_time);
+
+        $scheduledEnd = Carbon::parse($date->toDateString() . ' ' . $shift->end_time);
+
+        // Overnight shift that ends before it starts => ends next day.
+        if ($end->lessThan($start)) {
+            $scheduledEnd->addDay();
+        }
+
+        return $scheduledEnd;
+    }
+
+    /**
+     * The grace cutoff time beyond which an open session should be auto-closed:
+     * shift end + the configured forgotten-checkout grace period (default 4 hours).
+     */
+    public function autoCloseCutoff(Shift $shift, Carbon $date): ?Carbon
+    {
+        $scheduledEnd = $this->shiftEndAt($shift, $date);
+
+        if ($scheduledEnd === null) {
+            return null;
+        }
+
+        $graceHours = (float) Config::get('hr.working_hours.auto_close_grace_hours', self::AUTO_CLOSE_GRACE_HOURS);
+
+        return $scheduledEnd->copy()->addHours($graceHours);
+    }
+
+    /**
+     * Whether an open attendance record is stale and its session should be
+     * auto-closed. A record is stale when "now" is past the shift's scheduled
+     * end time by more than the forgotten-checkout grace period (4h by default).
+     * Falls back to the legacy check-in + N hours threshold for open-ended shifts.
+     */
+    public function isOpenRecordStale(Attendance $attendance, ?Carbon $now = null): bool
+    {
+        $now = $now ?? now();
+        $date = $attendance->attendance_date instanceof Carbon
+            ? $attendance->attendance_date->copy()
+            : Carbon::parse($attendance->attendance_date);
+
+        $shift = $attendance->shift ?? $attendance->employee?->currentShift();
+
+        $cutoff = $shift ? $this->autoCloseCutoff($shift, $date) : null;
+
+        // Preferred: shift-end + grace.
+        if ($cutoff !== null) {
+            return $now->greaterThan($cutoff);
+        }
+
+        // Open-ended shift (no end_time): fall back to check-in + legacy hours.
+        $checkIn = $attendance->check_in_time instanceof Carbon
+            ? $attendance->check_in_time
+            : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
+
+        $hours = (float) Config::get('hr.working_hours.auto_close_after_hours', 20);
+
+        return $now->greaterThan($checkIn->copy()->addHours($hours));
+    }
+
+    /**
+     * The check-out time to stamp on an auto-closed forgotten session:
+     * the shift's official scheduled end time (or check-in + N hours fallback).
+     */
+    public function autoCloseCheckOutTime(Attendance $attendance): string
+    {
+        $date = $attendance->attendance_date instanceof Carbon
+            ? $attendance->attendance_date->copy()
+            : Carbon::parse($attendance->attendance_date);
+
+        $shift = $attendance->shift ?? $attendance->employee?->currentShift();
+
+        if ($shift && ($scheduledEnd = $this->shiftEndAt($shift, $date)) !== null) {
+            return $scheduledEnd->toTimeString();
+        }
+
+        $hours = (float) Config::get('hr.working_hours.auto_close_after_hours', 20);
+
+        $checkIn = $attendance->check_in_time instanceof Carbon
+            ? $attendance->check_in_time
+            : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
+
+        return $checkIn->copy()->addHours($hours)->toTimeString();
+    }
+
+    /**
+     * Auto-close all stale open attendance records. Optionally restricted to a
+     * single employee. Returns the ids of records that were closed.
+     *
+     * @return array<int> closed attendance ids
+     */
+    public function autoCloseForgotten(?int $employeeId = null, ?Carbon $now = null): array
+    {
+        $now = $now ?? now();
+
+        $query = Attendance::whereNotNull('check_in_time')->whereNull('check_out_time');
+
+        if ($employeeId !== null) {
+            $query->where('employee_id', $employeeId);
+        }
+
+        $closed = [];
+
+        foreach ($query->get() as $attendance) {
+            if (!$this->isOpenRecordStale($attendance, $now)) {
+                continue;
+            }
+
+            $attendance->update([
+                'check_out_time' => $this->autoCloseCheckOutTime($attendance),
+            ]);
+
+            $this->processAttendance($attendance->fresh());
+
+            $closed[] = (int) $attendance->id;
+        }
+
+        return $closed;
     }
 
     public function calculateLatePenalty(Shift $shift, Carbon $checkInTime, Carbon $date, ?Employee $employee = null): array
@@ -192,6 +386,12 @@ class AttendancePenaltyService
                 $checkOut = $attendance->check_out_time instanceof Carbon
                     ? $attendance->check_out_time
                     : Carbon::parse($date->toDateString() . ' ' . $attendance->check_out_time);
+
+                // A night shift may cross midnight: if the clock time of check-out is
+                // earlier than check-in, the check-out took place on the next day.
+                if ($attendance->check_in_time instanceof Carbon === false && $checkOut->lessThan($checkIn)) {
+                    $checkOut->addDay();
+                }
 
                 $earlyResult = $shift
                     ? $this->calculateEarlyExitPenalty($shift, $checkIn, $checkOut, $date, $employee)

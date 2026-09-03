@@ -12,7 +12,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Automatically close forgotten (unchecked-out) attendance sessions
+        // whose shift ended more than the grace period ago — hourly keeps
+        // handovers clean without blocking future check-ins.
+        $schedule->command('attendance:auto-close-forgotten')->hourly()->withoutOverlapping();
     }
 
     /**

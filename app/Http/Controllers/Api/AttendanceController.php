@@ -282,32 +282,15 @@ class AttendanceController
     }
 
     /**
-     * Auto-close open attendance records whose check-in is older than the configured
-     * threshold (e.g. an employee forgot to check out), by setting the check-out time
-     * to check-in + threshold hours. Recomputes penalties/hours afterwards.
+     * Auto-close open attendance records whose scheduled shift has ended more
+     * than the forgotten-checkout grace period ago (default 4 hours past the
+     * shift's end time). This clears "open session" states so the employee can
+     * immediately check in again for a new shift / handover.
+     * Recomputed penalties/hours afterwards via the penalty service.
      */
     private function autoCloseOpenShifts(int $employeeId): void
     {
-        $hours   = (int) Config::get('hr.working_hours.auto_close_after_hours', 20);
-        $cutoff  = now()->subHours($hours);
-
-        $open = Attendance::where('employee_id', $employeeId)
-            ->whereNotNull('check_in_time')
-            ->whereNull('check_out_time')
-            ->get();
-
-        foreach ($open as $attendance) {
-            $checkIn = $attendance->check_in_time instanceof Carbon
-                ? $attendance->check_in_time
-                : Carbon::parse($attendance->attendance_date->toDateString() . ' ' . $attendance->check_in_time);
-
-            if ($checkIn->greaterThan($cutoff)) {
-                continue;
-            }
-
-            $attendance->update(['check_out_time' => $checkIn->copy()->addHours($hours)->toTimeString()]);
-            $this->penaltyService->processAttendance($attendance->fresh());
-        }
+        $this->penaltyService->autoCloseForgotten($employeeId);
     }
 
     public function checkIn(Request $request): JsonResponse
@@ -361,19 +344,20 @@ class AttendanceController
         // new check-in isn't blocked and old records don't stay open forever.
         $this->autoCloseOpenShifts($validated['employee_id']);
 
-        $exists = Attendance::where('employee_id', $validated['employee_id'])
-                            ->where('attendance_date', $today)
-                            ->whereNotNull('check_in_time')
-                            ->exists();
+        $openExists = Attendance::where('employee_id', $validated['employee_id'])
+                               ->where('attendance_date', $today)
+                               ->whereNotNull('check_in_time')
+                               ->whereNull('check_out_time')
+                               ->exists();
 
-        if ($exists) {
-            return response()->json(['success' => false, 'message' => 'تم تسجيل الحضور مسبقاً لهذا اليوم'], 422);
+        if ($openExists) {
+            return response()->json(['success' => false, 'message' => 'لديك جلسة عمل مفتوحة حالياً، يجب تسجيل الانصراف أولاً'], 422);
         }
 
         $now = now();
         $date = Carbon::parse($today);
 
-        $shift = $this->penaltyService->resolveShift($employee, $date);
+        $shift = $this->penaltyService->resolveShift($employee, $date, $now);
         $lateResult = ['late_minutes' => 0, 'deduction_type' => null, 'deduction_amount' => 0.0];
 
         if ($shift) {
@@ -397,17 +381,18 @@ class AttendanceController
         $record = Attendance::updateOrCreate(
             ['employee_id' => $validated['employee_id'], 'attendance_date' => $today],
             [
-                'check_in_time'              => $now->toTimeString(),
-                'check_in_latitude'          => $validated['latitude'] ?? null,
-                'check_in_longitude'         => $validated['longitude'] ?? null,
-                'check_in_photo'             => $photoPath,
-                'status'                     => $status,
-                'late_minutes'               => $lateResult['late_minutes'],
-                'shift_id'                   => $shift?->id,
+                'check_in_time'             => $now->toTimeString(),
+                'check_in_latitude'         => $validated['latitude'] ?? null,
+                'check_in_longitude'        => $validated['longitude'] ?? null,
+                'check_in_photo'            => $photoPath,
+                'status'                    => $status,
+                'late_minutes'              => $lateResult['late_minutes'],
+                'shift_id'                  => $shift?->id,
                 'applied_late_deduction_type' => $lateResult['deduction_type'],
-                'check_in_location_id'       => $locationData['id'],
-                'check_in_location_name'     => $locationData['name'],
-                'is_within_location'         => $locationData['within'],
+                'check_in_location_id'      => $locationData['id'],
+                'check_in_location_name'    => $locationData['name'],
+                'is_within_location'        => $locationData['within'],
+                'check_out_time'            => null,
             ]
         );
 
@@ -829,22 +814,44 @@ class AttendanceController
             ->whereMonth('attendance_date', $month)
             ->whereYear('attendance_date', $year)
             ->orderBy('attendance_date')
-            ->get();
+            ->get()
+            ->groupBy(fn ($r) => $r->attendance_date instanceof Carbon
+                ? $r->attendance_date->toDateString()
+                : $r->attendance_date
+            );
+
+        $grouped = $records->map(function ($dayRecords) {
+            $first = $dayRecords->first();
+            return [
+                'id' => $first->id,
+                'employee_id' => $first->employee_id,
+                'attendance_date' => $first->attendance_date,
+                'status' => $first->status,
+                'check_in_time' => $first->check_in_time,
+                'check_out_time' => $dayRecords->last()?->check_out_time,
+                'shift_id' => $first->shift_id,
+                'shift' => $first->shift,
+                'late_minutes' => $dayRecords->sum('late_minutes'),
+                'early_exit_minutes' => $dayRecords->sum('early_exit_minutes'),
+                'actual_worked_hours' => round($dayRecords->sum('actual_worked_hours'), 2),
+                'deduction_amount' => round($dayRecords->sum('deduction_amount'), 2),
+            ];
+        })->values();
 
         $stats = [
-            'present'            => $records->where('status', 'present')->count(),
-            'absent'             => $records->where('status', 'absent')->count(),
-            'late'               => $records->where('status', 'late')->count(),
-            'on_leave'           => $records->where('status', 'on_leave')->count(),
-            'total_hours'        => $records->sum('actual_worked_hours'),
-            'total_late_minutes' => $records->sum('late_minutes'),
-            'total_early_exit_minutes' => $records->sum('early_exit_minutes'),
-            'total_deduction_amount'   => $records->sum('deduction_amount'),
+            'present'            => $grouped->where('status', 'present')->count(),
+            'absent'             => $grouped->where('status', 'absent')->count(),
+            'late'               => $grouped->where('status', 'late')->count(),
+            'on_leave'           => $grouped->where('status', 'on_leave')->count(),
+            'total_hours'        => $grouped->sum('actual_worked_hours'),
+            'total_late_minutes' => $grouped->sum('late_minutes'),
+            'total_early_exit_minutes' => $grouped->sum('early_exit_minutes'),
+            'total_deduction_amount'   => $grouped->sum('deduction_amount'),
         ];
 
         return response()->json([
             'success'    => true,
-            'data'       => $records,
+            'data'       => $grouped,
             'statistics' => $stats,
         ]);
     }
@@ -872,7 +879,7 @@ class AttendanceController
             ->where('attendance_date', '<=', $end->toDateString())
             ->orderBy('attendance_date')
             ->get()
-            ->keyBy(fn ($r) => $r->attendance_date instanceof Carbon
+            ->groupBy(fn ($r) => $r->attendance_date instanceof Carbon
                 ? $r->attendance_date->toDateString()
                 : $r->attendance_date
             );
@@ -880,22 +887,48 @@ class AttendanceController
         $days = [];
         for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
             $key = $day->toDateString();
-            $r   = $records->get($key);
+            $dayRecords = $records->get($key);
 
-            $days[] = [
-                'date'              => $key,
-                'day_name'          => $day->isoFormat('dddd'),
-                'status'            => $r?->status ?? 'absent',
-                'check_in_time'     => $r?->check_in_time,
-                'check_out_time'    => $r?->check_out_time,
-                'shift_name'        => $r?->shift?->name,
-                'shift_start'       => $r?->shift?->start_time,
-                'shift_end'         => $r?->shift?->end_time,
-                'late_minutes'      => $r?->late_minutes ?? 0,
-                'early_exit_minutes'=> $r?->early_exit_minutes ?? 0,
-                'actual_worked_hours'=> $r?->actual_worked_hours ?? 0.0,
-                'deduction_amount'  => $r?->deduction_amount ?? 0.0,
-            ];
+            if ($dayRecords && $dayRecords->count() > 0) {
+                $first = $dayRecords->first();
+                $totalHours = $dayRecords->sum('actual_worked_hours');
+                $totalLate = $dayRecords->sum('late_minutes');
+                $totalEarly = $dayRecords->sum('early_exit_minutes');
+                $totalDeduction = $dayRecords->sum('deduction_amount');
+                $hasOpen = $dayRecords->contains(fn ($r) => !$r->check_out_time && $r->check_in_time);
+
+                $days[] = [
+                    'date'              => $key,
+                    'day_name'          => $day->isoFormat('dddd'),
+                    'status'            => $hasOpen ? 'present' : ($first->status ?? 'absent'),
+                    'check_in_time'     => $first?->check_in_time,
+                    'check_out_time'    => $dayRecords->last()?->check_out_time,
+                    'shift_name'        => $dayRecords->pluck('shift')->filter()->pluck('name')->implode(', ') ?: $first?->shift?->name,
+                    'shift_start'       => $first?->shift?->start_time,
+                    'shift_end'         => $dayRecords->last()?->shift?->end_time,
+                    'late_minutes'      => $totalLate,
+                    'early_exit_minutes'=> $totalEarly,
+                    'actual_worked_hours'=> round($totalHours, 2),
+                    'deduction_amount'  => round($totalDeduction, 2),
+                    'sessions_count'    => $dayRecords->count(),
+                ];
+            } else {
+                $days[] = [
+                    'date'              => $key,
+                    'day_name'          => $day->isoFormat('dddd'),
+                    'status'            => 'absent',
+                    'check_in_time'     => null,
+                    'check_out_time'    => null,
+                    'shift_name'        => null,
+                    'shift_start'       => null,
+                    'shift_end'         => null,
+                    'late_minutes'      => 0,
+                    'early_exit_minutes'=> 0,
+                    'actual_worked_hours'=> 0.0,
+                    'deduction_amount'  => 0.0,
+                    'sessions_count'    => 0,
+                ];
+            }
         }
 
         $present   = collect($days)->where('status', 'present')->count()
@@ -933,11 +966,37 @@ class AttendanceController
 
         $todayRecords = Attendance::with('employee')
             ->where('attendance_date', $today)
-            ->get();
+            ->get()
+            ->groupBy('employee_id');
 
-        $present = $todayRecords->where('status', 'present')->values();
-        $late    = $todayRecords->where('status', 'late')->values();
-        $onLeave = $todayRecords->where('status', 'on_leave')->values();
+        $present = collect();
+        $late    = collect();
+        $onLeave = collect();
+
+        foreach ($todayRecords as $empId => $empRecords) {
+            $hasOpen = $empRecords->contains(fn ($r) => !$r->check_out_time && $r->check_in_time);
+            $best = $empRecords->first();
+            $firstCheckIn = $empRecords->min('check_in_time');
+            $lastCheckOut = $empRecords->whereNotNull('check_out_time')->max('check_out_time');
+
+            $merged = (object) [
+                'id' => $best->id,
+                'employee' => $best->employee,
+                'employee_id' => $empId,
+                'check_in_time' => $firstCheckIn,
+                'check_out_time' => $lastCheckOut,
+                'late_minutes' => $empRecords->sum('late_minutes'),
+                'status' => $hasOpen ? 'present' : ($best->status ?? 'present'),
+            ];
+
+            if ($merged->status === 'late') {
+                $late->push($merged);
+            } elseif ($merged->status === 'on_leave') {
+                $onLeave->push($merged);
+            } else {
+                $present->push($merged);
+            }
+        }
 
         $absentEmployees = Employee::where('status', 'active')
             ->whereDoesntHave('attendances', function ($q) use ($today) {
@@ -956,12 +1015,14 @@ class AttendanceController
             ])->values();
         };
 
+        $totalPresentCount = $present->count() + $late->count();
+
         $summary = [
             'total_employees' => $total,
-            'present'         => $present->count(),
+            'present'         => $totalPresentCount,
             'late'            => $late->count(),
-            'absent'          => $total - $todayRecords->count(),
-            'no_checkout'     => $todayRecords->whereNotNull('check_in_time')->whereNull('check_out_time')->count(),
+            'absent'          => $total - $totalPresentCount - $onLeave->count(),
+            'no_checkout'     => $todayRecords->flatten()->whereNotNull('check_in_time')->whereNull('check_out_time')->count(),
             'lists' => [
                 'present'  => $list($present),
                 'late'     => $list($late),

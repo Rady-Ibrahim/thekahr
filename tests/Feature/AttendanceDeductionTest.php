@@ -237,10 +237,12 @@ class AttendanceDeductionTest extends TestCase
 
         $this->assertTrue($payload['success'], 'Check-in was rejected: ' . ($payload['message'] ?? ''));
 
-        // Old open record must be auto-closed 20h after its check-in (08:00 + 20h = 04:00 next day)
+        // Old open record must be auto-closed once its shift (08:00-17:00) ended
+        // more than the 4h grace ago (17:00 + 4h = 21:00 day 1; now is day 2 09:00).
+        // The check-out is stamped at the official shift end time (17:00).
         $old = $open->fresh();
         $this->assertNotNull($old->check_out_time);
-        $this->assertSame('04:00:00', $old->check_out_time);
+        $this->assertSame('17:00:00', $old->check_out_time);
 
         \Carbon\Carbon::setTestNow(null);
     }
