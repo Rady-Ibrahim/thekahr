@@ -892,7 +892,9 @@ class AttendanceController
             return [
                 'id' => $first->id,
                 'employee_id' => $first->employee_id,
-                'attendance_date' => $first->attendance_date,
+                'attendance_date' => $first->attendance_date instanceof Carbon
+                    ? $first->attendance_date->toDateString()
+                    : $first->attendance_date,
                 'status' => $first->status,
                 'check_in_time' => $first->check_in_time,
                 'check_out_time' => $dayRecords->last()?->check_out_time,
