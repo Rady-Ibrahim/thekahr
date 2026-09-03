@@ -691,7 +691,7 @@ async function loadShiftSelect() {
     const sel2 = document.getElementById('atf_shift');
     const sel3 = document.getElementById('shiftFilter');
     const opts = '<option value="">اختر الوردية</option>' + all.filter(s => s.is_active).map(s =>
-        `<option value="${s.id}">${s.name} (${s.start_time?.substring(0,5)} - ${s.end_time?.substring(0,5)})</option>`
+        `<option value="${s.id}" data-start-time="${s.start_time || ''}" data-end-time="${s.end_time || ''}" data-grace="${s.grace_period_minutes || 0}">${s.name} (${s.start_time?.substring(0,5)} - ${s.end_time?.substring(0,5)})</option>`
     ).join('');
     sel.innerHTML = '<option value="">عرض الوردية</option>' + opts.substring(22);
     sel2.innerHTML = '<option value="">الوردية الافتراضية</option>' + opts.substring(22);
@@ -1021,19 +1021,31 @@ function earlyText(minutes, deductionType) {
 }
 
 function updateDeductionPreview() {
-    const late = Number(document.getElementById('atf_late').value || 0);
+    const lateField = document.getElementById('atf_late');
     const preview = document.getElementById('atf_deduction_preview');
     if (!preview) return;
-    if (late > 0) {
+
+    const grace = Number(lateField.dataset.grace || 0);
+    const effectiveLate = Number(lateField.dataset.effectiveLate ?? (Number(lateField.value || 0) - grace));
+    const totalLate = Number(lateField.value || 0);
+
+    if ((grace && totalLate > 0 && totalLate <= grace) || effectiveLate <= 0) {
+        // Within the grace period -> on time, no deduction.
+        preview.value = 'لا يوجد خصم (داخل فترة السماح)';
+        preview.classList.remove('text-danger', 'fw-bold');
+        return;
+    }
+
+    if (totalLate > 0) {
         const halfDayAfterMinutes = 120;
-        if (late >= halfDayAfterMinutes) {
+        if (effectiveLate >= halfDayAfterMinutes) {
             preview.value = 'خصم نصف يوم من المرتب';
             preview.classList.add('text-danger', 'fw-bold');
-        } else if (late >= 30) {
+        } else if (effectiveLate >= 30) {
             preview.value = 'خصم ربع يوم من المرتب';
             preview.classList.add('text-danger', 'fw-bold');
         } else {
-            preview.value = `خصم ${late} دقيقة من المرتب`;
+            preview.value = `خصم ${effectiveLate} دقيقة من المرتب`;
             preview.classList.remove('text-danger');
             preview.classList.add('fw-bold');
         }
@@ -1046,9 +1058,34 @@ function updateDeductionPreview() {
 function updateLateFromTime() {
     const checkIn = document.getElementById('atf_in').value;
     if (!checkIn) return;
-    const late = minutesBetween(workStartTime, checkIn);
-    document.getElementById('atf_late').value = late;
-    if (late > 0) document.getElementById('atf_status').value = 'late';
+    // Parse the selected shift's own start time & grace from the dropdown option
+    // (falls back to the global config start time when no shift is selected).
+    const shiftSel = document.getElementById('atf_shift');
+    const selOpt = shiftSel.selectedOptions ? shiftSel.selectedOptions[0] : null;
+    const shiftStart = selOpt && selOpt.dataset.startTime ? selOpt.dataset.startTime : workStartTime;
+    const grace = selOpt && selOpt.dataset.grace ? Number(selOpt.dataset.grace) : 0;
+
+    // Total delay in minutes vs the shift start (matches backend late_minutes field).
+    const totalLate = minutesBetween(shiftStart, checkIn);
+    // Effective delay beyond the grace period (for status/deduction eligibility).
+    const effectiveLate = Math.max(0, totalLate - (grace || 0));
+
+    const lateField = document.getElementById('atf_late');
+    const statusField = document.getElementById('atf_status');
+
+    // Show the total delay minutes (matches the backend late_minutes) and keep the
+    // effective (post-grace) value on the element for the deduction preview.
+    lateField.value = totalLate;
+    lateField.dataset.effectiveLate = effectiveLate;
+    lateField.dataset.grace = grace;
+
+    if (statusField) {
+        if (totalLate > (grace || 0)) {
+            statusField.value = 'late';
+        } else if (totalLate > 0) {
+            statusField.value = 'present'; // within grace = on time
+        }
+    }
     updateDeductionPreview();
 }
 
@@ -1070,7 +1107,11 @@ function updateShiftAlert() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('atf_in').addEventListener('change', updateLateFromTime);
     document.getElementById('atf_late').addEventListener('input', updateDeductionPreview);
-    document.getElementById('atf_shift').addEventListener('change', updateShiftAlert);
+    document.getElementById('atf_shift').addEventListener('change', () => {
+        updateShiftAlert();
+        // Recompute late minutes when the shift changes (its start/grace differ).
+        if (document.getElementById('atf_in').value) updateLateFromTime();
+    });
     document.getElementById('dateFrom').addEventListener('change', () => { dateFilterTouched = true; });
     document.getElementById('dateTo').addEventListener('change', () => { dateFilterTouched = true; });
     loadTodaySummary();
