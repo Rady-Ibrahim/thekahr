@@ -459,6 +459,14 @@ class AttendanceDeductionTest extends TestCase
         $this->assertSame('17:00:00', $day2['shift_end']);
         $this->assertSame(1, $day2['sessions_count']);
 
+        // Absent day still surfaces the employee's assigned shift.
+        $day3 = collect($payload['data'])->firstWhere('date', '2026-09-03');
+        $this->assertSame('absent', $day3['status']);
+        $this->assertSame('Test Shift', $day3['shift_name']);
+        $this->assertSame('08:00:00', $day3['shift_start']);
+        $this->assertSame('17:00:00', $day3['shift_end']);
+        $this->assertNull($day3['check_in_time']);
+
         \Carbon\Carbon::setTestNow(null);
     }
 }
