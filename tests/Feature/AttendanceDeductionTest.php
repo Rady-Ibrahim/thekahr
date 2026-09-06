@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Api\AttendanceController;
 use App\Models\Attendance;
+use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\EmployeeShift;
 use App\Models\Shift;
@@ -408,6 +409,55 @@ class AttendanceDeductionTest extends TestCase
         $this->assertNull($day5['check_in_time']);
 
         $this->assertSame(1, $payload['statistics']['late']);
+
+        \Carbon\Carbon::setTestNow(null);
+    }
+
+    public function test_my_daily_log_falls_back_to_employee_active_shift_for_session_records(): void
+    {
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-10 12:00:00'));
+
+        $user = User::create([
+            'name'     => 'Mobile Emp',
+            'email'    => 'mobile_' . uniqid() . '@example.com',
+            'password' => bcrypt('secret'),
+        ]);
+
+        $emp   = $this->makeEmployee();
+        $emp->update(['user_id' => $user->id]);
+        $shift = $this->makeShift();
+        $this->assignShift($emp, $shift);
+
+        // Custom-attendance day: shift lives only on the employee assignment,
+        // while check-in/out are stored in the session log.
+        $att = Attendance::create([
+            'employee_id'     => $emp->id,
+            'attendance_date' => '2026-09-02',
+            'status'          => 'present',
+        ]);
+
+        AttendanceLog::create([
+            'employee_id'    => $emp->id,
+            'attendance_id'  => $att->id,
+            'log_date'       => '2026-09-02',
+            'check_in_time'  => '09:10:28',
+            'check_out_time' => '18:54:21',
+            'duration_minutes'=> 583,
+        ]);
+
+        $response = $this->actingAs($user)->get('/api/attendance/my-daily-log?month=9&year=2026');
+        $payload  = json_decode($response->getContent(), true);
+
+        $this->assertTrue($payload['success']);
+
+        $day2 = collect($payload['data'])->firstWhere('date', '2026-09-02');
+        $this->assertSame('present', $day2['status']);
+        $this->assertSame('09:10:28', $day2['check_in_time']);
+        $this->assertSame('18:54:21', $day2['check_out_time']);
+        $this->assertSame('Test Shift', $day2['shift_name']);
+        $this->assertSame('08:00:00', $day2['shift_start']);
+        $this->assertSame('17:00:00', $day2['shift_end']);
+        $this->assertSame(1, $day2['sessions_count']);
 
         \Carbon\Carbon::setTestNow(null);
     }

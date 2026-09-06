@@ -942,6 +942,8 @@ class AttendanceController
         $start = Carbon::createFromDate($year, $month, 1);
         $end   = $start->copy()->endOfMonth();
 
+        $employeeShift = $employee->currentShift();
+
         $records = Attendance::with('shift', 'logs')
             ->where('employee_id', $employee->id)
             ->where('attendance_date', '>=', $start->toDateString())
@@ -967,6 +969,7 @@ class AttendanceController
                 $dayLogs = $dayRecords->flatMap->logs->values();
                 $hasOpen = $dayLogs->contains(fn ($l) => $l->check_in_time !== null && $l->isOpen())
                     || $dayRecords->contains(fn ($r) => !$r->check_out_time && $r->check_in_time);
+                $activeShift = $first?->shift ?? $employeeShift;
 
                 $days[] = [
                     'date'              => $key,
@@ -974,9 +977,9 @@ class AttendanceController
                     'status'            => $hasOpen ? 'present' : ($first->status ?? 'absent'),
                     'check_in_time'     => $dayLogs->first()?->check_in_time ?? $first?->check_in_time,
                     'check_out_time'    => $dayLogs->last()?->check_out_time ?? $dayRecords->last()?->check_out_time,
-                    'shift_name'        => $dayRecords->pluck('shift')->filter()->pluck('name')->implode(', ') ?: $first?->shift?->name,
-                    'shift_start'       => $first?->shift?->start_time,
-                    'shift_end'         => $dayRecords->last()?->shift?->end_time,
+                    'shift_name'        => $dayRecords->pluck('shift')->filter()->pluck('name')->implode(', ') ?: $activeShift?->name,
+                    'shift_start'       => $activeShift?->start_time,
+                    'shift_end'         => $activeShift?->end_time,
                     'late_minutes'      => $totalLate,
                     'early_exit_minutes'=> $totalEarly,
                     'actual_worked_hours'=> round($totalHours, 2),
