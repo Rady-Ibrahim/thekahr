@@ -94,6 +94,7 @@ return [
         'housing' => 'بدل سكن',
         'meal' => 'بدل طعام',
         'phone' => 'بدل هاتف',
+        'shift' => 'بدل وردية',
     ],
 
     // Incentive Types
