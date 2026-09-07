@@ -12,7 +12,7 @@ class AutoCloseForgottenAttendance extends Command
                             {--employee= : Optional employee id to restrict the scan to}
                             {--now= : Optional "now" timestamp for testing the grace window}';
 
-    protected $description = 'Auto-close open attendance sessions past their shift-end + grace (4h) or check-in + 20h for custom attendance';
+    protected $description = 'Auto-close open attendance sessions past check-in + 20 hours';
 
     public function handle(
         AttendancePenaltyService $penaltyService,

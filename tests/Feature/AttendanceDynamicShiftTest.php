@@ -139,10 +139,10 @@ class AttendanceDynamicShiftTest extends TestCase
             'shift_id'        => $nightShift->id,
         ]);
 
-        // Later, when both have forgotten to check out...
-        Carbon::setTestNow(Carbon::parse('2026-09-11 09:30:00')); // 05:00 end + 4h30m grace
+        // Later, when the session is stale (check-in 17:00 + 20h = 13:00 next day)...
+        Carbon::setTestNow(Carbon::parse('2026-09-11 14:00:00'));
 
-        // Auto-close ALL stale records: both employees' sessions must close cleanly.
+        // Auto-close ALL stale records.
         $closed = $svc->autoCloseForgotten();
 
         $this->assertContains((int) $attA->id, $closed);
@@ -152,7 +152,7 @@ class AttendanceDynamicShiftTest extends TestCase
         $attA2 = Attendance::create([
             'employee_id'     => $empA->id,
             'attendance_date' => '2026-09-11',
-            'check_in_time'   => '09:30:00',
+            'check_in_time'   => '13:00:00',
             'status'          => 'present',
         ]);
 
@@ -161,7 +161,7 @@ class AttendanceDynamicShiftTest extends TestCase
         Carbon::setTestNow(null);
     }
 
-    public function test_forgotten_session_auto_closes_after_4_hours_past_shift_end(): void
+    public function test_forgotten_session_auto_closes_after_20_hours_past_checkin(): void
     {
         $emp = $this->makeEmployee();
         $shift = $this->makeShift('Night', '17:00:00', '05:00:00');
@@ -177,26 +177,26 @@ class AttendanceDynamicShiftTest extends TestCase
             'shift_id'        => $shift->id,
         ]);
 
-        // Within the 4h grace (09:00 = 05:00 end + 4h) -> NOT stale.
-        Carbon::setTestNow(Carbon::parse('2026-09-11 08:00:00'));
+        // Within the 20h threshold (12:00 = 17:00 + 19h) -> NOT stale.
+        Carbon::setTestNow(Carbon::parse('2026-09-11 12:00:00'));
         $this->assertFalse($svc->isOpenRecordStale($att, now()));
         $this->assertSame([], $svc->autoCloseForgotten($emp->id, now()));
 
-        // Just past the 4h grace (09:01) -> stale.
-        Carbon::setTestNow(Carbon::parse('2026-09-11 09:01:00'));
+        // Just past the 20h threshold (13:01 = 17:00 + 20h01m) -> stale.
+        Carbon::setTestNow(Carbon::parse('2026-09-11 13:01:00'));
         $this->assertTrue($svc->isOpenRecordStale($att->fresh(), now()));
 
         $closed = $svc->autoCloseForgotten($emp->id, now());
         $this->assertContains((int) $att->id, $closed);
 
-        // Check-out stamped at the official shift end (05:00), not "now".
+        // Check-out stamped at check-in + 20h = 13:00.
         $closedAttendance = $att->fresh();
-        $this->assertSame('05:00:00', $closedAttendance->check_out_time);
+        $this->assertSame('13:00:00', $closedAttendance->check_out_time);
 
         Carbon::setTestNow(null);
     }
 
-    public function test_forgotten_session_not_closed_within_grace_for_day_shift(): void
+    public function test_forgotten_session_not_closed_within_20h_for_day_shift(): void
     {
         $emp = $this->makeEmployee();
         $shift = $this->makeShift('Day', '05:00:00', '17:00:00');
@@ -212,7 +212,7 @@ class AttendanceDynamicShiftTest extends TestCase
             'shift_id'        => $shift->id,
         ]);
 
-        // 20:00 = 17:00 end + 3h, still within 4h grace -> no close.
+        // 20:00 same day = 05:00 + 15h, still within 20h threshold -> no close.
         Carbon::setTestNow(Carbon::parse('2026-09-10 20:00:00'));
         $this->assertFalse($svc->isOpenRecordStale($att, now()));
         $this->assertSame([], $svc->autoCloseForgotten($emp->id, now()));
@@ -234,12 +234,13 @@ class AttendanceDynamicShiftTest extends TestCase
             'shift_id'        => $shift->id,
         ]);
 
-        // 21:30 = 17:00 end + 4.5h -> stale; command should close it.
-        $this->artisan('attendance:auto-close-forgotten', ['--employee' => $emp->id, '--now' => '2026-09-10 21:30:00'])
-            ->expectsOutputToContain('Auto-closed 1')
+        // 01:01 next day = just past 05:00 + 20h -> stale; command should close it.
+        $this->artisan('attendance:auto-close-forgotten', ['--employee' => $emp->id, '--now' => '2026-09-11 01:01:00'])
+            ->expectsOutputToContain('Auto-closed 1 standard')
             ->assertExitCode(0);
 
+        // Check-out stamped at check-in + 20h = 01:00 next day.
         $this->assertNotNull($att->fresh()->check_out_time);
-        $this->assertSame('17:00:00', $att->fresh()->check_out_time);
+        $this->assertSame('01:00:00', $att->fresh()->check_out_time);
     }
 }

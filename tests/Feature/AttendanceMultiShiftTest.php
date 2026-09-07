@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\EmployeeShift;
 use App\Models\Shift;
 use App\Models\ShiftLateRule;
+use App\Services\AttendancePenaltyService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Request;
@@ -236,7 +237,7 @@ class AttendanceMultiShiftTest extends TestCase
         Carbon::setTestNow(null);
     }
 
-    public function testScenario5_forgotten_checkout_auto_close_4h_grace_12h_shift(): void
+    public function testScenario5_forgotten_checkout_auto_close_20h_12h_shift(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-20 08:00:00'));
 
@@ -253,23 +254,26 @@ class AttendanceMultiShiftTest extends TestCase
         $this->assertNotNull($record);
         $this->assertNull($record->check_out_time);
 
-        // On next check-in before the 4h grace expires, the old session must NOT yet be closed.
-        Carbon::setTestNow(Carbon::parse('2026-09-20 23:00:00')); // 20:00 end + 3h, within 4h grace
-        $inEarly = $this->checkIn($emp);
-        $this->assertSame(422, $inEarly['status']); // open session still exists (within grace)
+        // Before the 20h threshold (08:00 + 20h = 04:00 next day) the old
+        // Sep-20 session is NOT stale: it must still be open.
+        Carbon::setTestNow(Carbon::parse('2026-09-21 03:00:00')); // 08:00 + 19h, within 20h
+        $svc = app(AttendancePenaltyService::class);
+        $this->assertFalse($svc->isOpenRecordStale($record->fresh(), now()));
         $this->assertNull($record->fresh()->check_out_time);
 
-        // Just after the 4h grace (20:00 + 4h = 00:00 next day), a new check-in fires
-        // auto-close on the stale session and proceeds cleanly.
-        Carbon::setTestNow(Carbon::parse('2026-09-21 00:30:00'));
+        // Just after the 20h threshold (08:00 + 20h = 04:00), the session IS stale.
+        Carbon::setTestNow(Carbon::parse('2026-09-21 04:30:00'));
+        $this->assertTrue($svc->isOpenRecordStale($record->fresh(), now()));
+
+        // A new check-in fires auto-close on the stale session and proceeds cleanly.
         $inLate = $this->checkIn($emp);
         $this->assertSame(200, $inLate['status']);
         $this->assertTrue($inLate['payload']['success']);
 
-        // Old session closed at the scheduled shift end (20:00).
+        // Old session closed at check-in + 20h = 04:00 next day.
         $closed = $record->fresh();
         $this->assertNotNull($closed->check_out_time);
-        $this->assertSame('20:00:00', $closed->check_out_time);
+        $this->assertSame('04:00:00', $closed->check_out_time);
 
         // New check-in recorded successfully on the next day.
         $newRecord = Attendance::where('employee_id', $emp->id)->where('attendance_date', '2026-09-21')->first();

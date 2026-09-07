@@ -129,8 +129,13 @@ class CustomAttendanceService
         $cutoff = now()->subHours($hours);
 
         $query = AttendanceLog::whereNull('check_out_time')
-            ->where('check_in_time', '<', $cutoff->toTimeString())
-            ->where('log_date', '<', $cutoff->toDateString());
+            ->where(function ($q) use ($cutoff) {
+                $q->where('log_date', '<', $cutoff->toDateString())
+                    ->orWhere(function ($q) use ($cutoff) {
+                        $q->where('log_date', $cutoff->toDateString())
+                            ->where('check_in_time', '<', $cutoff->toTimeString());
+                    });
+            });
 
         if ($employeeId !== null) {
             $query->where('employee_id', $employeeId);

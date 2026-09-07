@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Config;
 
 class AttendancePenaltyService
 {
-    public const AUTO_CLOSE_GRACE_HOURS = 4;
+    /** @var int Hours after check-in before a forgotten session is auto-closed. */
+    private const AUTO_CLOSE_AFTER_HOURS = 20;
 
     /**
      * Dynamically resolve the shift that matches the employee's check-in time.
@@ -114,27 +115,9 @@ class AttendancePenaltyService
     }
 
     /**
-     * The grace cutoff time beyond which an open session should be auto-closed:
-     * shift end + the configured forgotten-checkout grace period (default 4 hours).
-     */
-    public function autoCloseCutoff(Shift $shift, Carbon $date): ?Carbon
-    {
-        $scheduledEnd = $this->shiftEndAt($shift, $date);
-
-        if ($scheduledEnd === null) {
-            return null;
-        }
-
-        $graceHours = (float) Config::get('hr.working_hours.auto_close_grace_hours', self::AUTO_CLOSE_GRACE_HOURS);
-
-        return $scheduledEnd->copy()->addHours($graceHours);
-    }
-
-    /**
-     * Whether an open attendance record is stale and its session should be
-     * auto-closed. A record is stale when "now" is past the shift's scheduled
-     * end time by more than the forgotten-checkout grace period (4h by default).
-     * Falls back to the legacy check-in + N hours threshold for open-ended shifts.
+     * Whether an open attendance record is stale and should be auto-closed.
+     * A record is stale when "now" is past the check-in time by more than
+     * the configured auto_close_after_hours (default 20 hours).
      */
     public function isOpenRecordStale(Attendance $attendance, ?Carbon $now = null): bool
     {
@@ -143,28 +126,16 @@ class AttendancePenaltyService
             ? $attendance->attendance_date->copy()
             : Carbon::parse($attendance->attendance_date);
 
-        $shift = $attendance->shift ?? $attendance->employee?->currentShift();
-
-        $cutoff = $shift ? $this->autoCloseCutoff($shift, $date) : null;
-
-        // Preferred: shift-end + grace.
-        if ($cutoff !== null) {
-            return $now->greaterThan($cutoff);
-        }
-
-        // Open-ended shift (no end_time): fall back to check-in + legacy hours.
         $checkIn = $attendance->check_in_time instanceof Carbon
             ? $attendance->check_in_time
             : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
 
-        $hours = (float) Config::get('hr.working_hours.auto_close_after_hours', 20);
-
-        return $now->greaterThan($checkIn->copy()->addHours($hours));
+        return $now->greaterThan($checkIn->copy()->addHours(self::AUTO_CLOSE_AFTER_HOURS));
     }
 
     /**
      * The check-out time to stamp on an auto-closed forgotten session:
-     * the shift's official scheduled end time (or check-in + N hours fallback).
+     * check-in time + auto_close_after_hours (default 20 hours).
      */
     public function autoCloseCheckOutTime(Attendance $attendance): string
     {
@@ -172,19 +143,11 @@ class AttendancePenaltyService
             ? $attendance->attendance_date->copy()
             : Carbon::parse($attendance->attendance_date);
 
-        $shift = $attendance->shift ?? $attendance->employee?->currentShift();
-
-        if ($shift && ($scheduledEnd = $this->shiftEndAt($shift, $date)) !== null) {
-            return $scheduledEnd->toTimeString();
-        }
-
-        $hours = (float) Config::get('hr.working_hours.auto_close_after_hours', 20);
-
         $checkIn = $attendance->check_in_time instanceof Carbon
             ? $attendance->check_in_time
             : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
 
-        return $checkIn->copy()->addHours($hours)->toTimeString();
+        return $checkIn->copy()->addHours(self::AUTO_CLOSE_AFTER_HOURS)->toTimeString();
     }
 
     /**

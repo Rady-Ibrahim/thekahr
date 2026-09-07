@@ -146,12 +146,7 @@ return [
         'late_threshold_minutes' => 15,
         'half_day_deduction_after_minutes' => 120,
         'timezone' => 'Africa/Cairo',
-        // If an employee forgets to check out, the open shift is auto-closed
-        // after this many hours PAST the shift's scheduled end time.
-        // (4-hour grace allows handovers between concurrent shifts.)
-        'auto_close_grace_hours' => 4,
-        // Backward-compatible legacy threshold (hours after check-in) used when
-        // the shift's scheduled end time cannot be determined.
+        // Maximum hours after check-in before a forgotten session is auto-closed.
         'auto_close_after_hours' => 20,
     ],
 
