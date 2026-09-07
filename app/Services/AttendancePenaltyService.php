@@ -175,6 +175,7 @@ class AttendancePenaltyService
 
             $attendance->update([
                 'check_out_time' => $this->autoCloseCheckOutTime($attendance),
+                'notes' => CustomAttendanceService::AUTO_CLOSED_NOTE,
             ]);
 
             $this->processAttendance($attendance->fresh());
@@ -242,9 +243,16 @@ class AttendancePenaltyService
             ];
         }
 
-        $expectedEnd = Carbon::parse($date->toDateString() . ' ' . $shift->end_time);
+        $shiftStart = Carbon::parse($checkInTime->format('Y-m-d') . ' ' . $shift->start_time);
+        $shiftEnd   = Carbon::parse($checkInTime->format('Y-m-d') . ' ' . $shift->end_time);
+
+        // If the shift crosses midnight (start is after end), the end falls on the next day.
+        if ($shiftEnd->lessThanOrEqualTo($shiftStart)) {
+            $shiftEnd->addDay();
+        }
+
         $workedMinutes = (int) $checkInTime->diffInMinutes($checkOutTime);
-        $earlyMinutes = max(0, (int) $checkOutTime->diffInMinutes($expectedEnd, false));
+        $earlyMinutes = max(0, (int) $checkOutTime->diffInMinutes($shiftEnd, false));
 
         $actualWorkedHours = round($workedMinutes / 60, 2);
 

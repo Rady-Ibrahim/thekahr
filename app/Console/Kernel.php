@@ -9,13 +9,17 @@ class Kernel extends ConsoleKernel
 {
     /**
      * Define the application's command schedule.
+     *
+     * Note: closing forgotten/stale attendance sessions is now handled by the
+     * application itself (Self-cleaning Code) via:
+     *   - CustomAttendanceService::autoCloseStaleSessions() on check-in/check-out,
+     *   - AutoCloseStaleAttendanceMiddleware on any authenticated request.
+     * No scheduled task is required for correctness; the auto-close command
+     * remains available for on-demand manual runs.
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Automatically close forgotten (unchecked-out) attendance sessions
-        // whose shift ended more than the grace period ago — hourly keeps
-        // handovers clean without blocking future check-ins.
-        $schedule->command('attendance:auto-close-forgotten')->hourly()->withoutOverlapping();
+        //
     }
 
     /**

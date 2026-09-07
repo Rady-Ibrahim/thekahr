@@ -32,7 +32,7 @@ use App\Http\Controllers\Api\NearExpirySaleController;
 Route::post('/auth/login', [AuthController::class, 'login']);
 
 // Protected
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'auto.close.attendance'])->group(function () {
 
     // Auth
     Route::post('/auth/logout',           [AuthController::class, 'logout']);

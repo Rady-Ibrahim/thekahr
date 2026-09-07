@@ -428,8 +428,13 @@ class AttendanceController
             $lateResult = $this->penaltyService->calculateLateFromConfig($now, $date);
         }
 
+        // Status = late only when a deduction actually applies, i.e. the check-in
+        // falls beyond the shift grace period (effective delay > 0). This keeps the
+        // displayed status consistent with the applied penalty (no more "late with
+        // 0.00 deduction"). When no shift matched, fall back to the configured threshold.
         $lateThreshold = (int) Config::get('hr.working_hours.late_threshold_minutes', 15);
-        $status = $lateResult['late_minutes'] > $lateThreshold ? 'late' : 'present';
+        $effectiveDelay = $lateResult['effective_delay'] ?? max(0, $lateResult['late_minutes'] - $lateThreshold);
+        $status = $effectiveDelay > 0 ? 'late' : 'present';
 
         $photoPath = null;
         if ($request->hasFile('photo')) {

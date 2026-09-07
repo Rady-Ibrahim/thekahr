@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\DB;
 
 class CustomAttendanceService
 {
+    /** Note stamped on auto-closed (forgotten) sessions. */
+    public const AUTO_CLOSED_NOTE = 'auto_closed';
+
     /**
      * Start a new work session (check-in) for a custom-attendance employee.
      * Multiple completed sessions per day are allowed; only one open session at a time.
@@ -133,7 +136,7 @@ class CustomAttendanceService
                 $q->where('log_date', '<', $cutoff->toDateString())
                     ->orWhere(function ($q) use ($cutoff) {
                         $q->where('log_date', $cutoff->toDateString())
-                            ->where('check_in_time', '<', $cutoff->toTimeString());
+                            ->where('check_in_time', '<=', $cutoff->toTimeString());
                     });
             });
 
@@ -152,6 +155,7 @@ class CustomAttendanceService
             $log->update([
                 'check_out_time' => $autoCheckOut->toTimeString(),
                 'duration_minutes' => $durationMinutes,
+                'notes' => self::AUTO_CLOSED_NOTE,
             ]);
 
             $this->recalculateDay($log->attendance_id);

@@ -12,9 +12,12 @@ use App\Models\ShiftEarlyExitRule;
 use App\Models\ShiftLateRule;
 use App\Services\AttendancePenaltyService;
 use App\Services\CustomAttendanceService;
+use App\Models\Role;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class AttendanceFlowTest extends TestCase
@@ -231,6 +234,7 @@ class AttendanceFlowTest extends TestCase
         $this->assertNotNull($oldLog->check_out_time);
         $this->assertSame('14:00:00', $oldLog->check_out_time);
         $this->assertSame(1200, $oldLog->duration_minutes); // 20 hours
+        $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $oldLog->notes);
 
         // Attendance record should be recalculated
         $att = Attendance::where('employee_id', $emp->id)
@@ -440,6 +444,281 @@ class AttendanceFlowTest extends TestCase
         $this->assertEqualsWithDelta(30 * 5, $processed->deduction_amount, 0.01);
 
         $this->assertEqualsWithDelta(7.5, $processed->actual_worked_hours, 0.01);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_early_departure_on_overnight_shift_crossing_midnight(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-10 18:00:00'));
+
+        $emp   = $this->makeEmployee(5000);
+        $shift = $this->makeShift('18:00:00', '02:00:00', 15);
+        $this->assignShift($emp, $shift);
+
+        // Checked in 18:00 on Sep 10, checked out 01:00 on Sep 11.
+        // The shift ends at 02:00 on Sep 11, so the employee left 60 minutes early.
+        $att = Attendance::create([
+            'employee_id'     => $emp->id,
+            'attendance_date' => '2026-09-10',
+            'check_in_time'   => '18:00:00',
+            'check_out_time'  => '01:00:00',
+            'status'          => 'present',
+            'shift_id'        => $shift->id,
+        ]);
+
+        $processed = app(AttendancePenaltyService::class)->processAttendance($att);
+
+        // Early by 60 minutes (02:00 next day - 01:00 next day).
+        $this->assertSame(60, $processed->early_exit_minutes);
+        $this->assertSame('half_day', $processed->applied_early_deduction_type);
+        $this->assertEqualsWithDelta(100.0, $processed->deduction_amount, 0.01);
+
+        // Worked 18:00 -> 01:00 (next day) = 7 hours.
+        $this->assertEqualsWithDelta(7.0, $processed->actual_worked_hours, 0.01);
+
+        // No late.
+        $this->assertSame(0, $processed->late_minutes);
+
+        Carbon::setTestNow(null);
+    }
+
+    // ─── Self-cleaning via Middleware (no cron dependency) ──────────────────
+
+    private function makeUserWithEmployee(): User
+    {
+        $user = User::create([
+            'name'     => 'Flow User ' . self::$seq,
+            'email'    => 'flow' . self::$seq . '_' . uniqid() . '@example.com',
+            'password' => 'password',
+        ]);
+
+        $emp = $this->makeEmployee(5000, custom: true);
+        $emp->update(['user_id' => $user->id]);
+
+        return $user;
+    }
+
+    public function test_middleware_auto_closes_stale_session_on_authenticated_request(): void
+    {
+        // Day 1, 17:00 — employee checks in (custom attendance).
+        Carbon::setTestNow(Carbon::parse('2026-09-02 17:00:00'));
+
+        $user = $this->makeUserWithEmployee();
+        $emp  = Employee::where('user_id', $user->id)->firstOrFail();
+
+        $service = app(CustomAttendanceService::class);
+        $service->startSession($emp, [], 'mobile');
+
+        $openLog = $service->openSession($emp);
+        $this->assertNotNull($openLog);
+        $this->assertTrue($openLog->isOpen());
+
+        // Day 2, 15:00 — 22 hours later the employee opens the app: a request to
+        // any protected endpoint triggers the self-cleaning middleware.
+        Carbon::setTestNow(Carbon::parse('2026-09-03 15:00:00'));
+
+        Sanctum::actingAs($user);
+        $response = $this->getJson('/api/attendance/my-records');
+
+        $response->assertOk();
+
+        // Old session closed at check-in + 20h = 13:00 next day with a marker note.
+        $closed = $openLog->fresh();
+        $this->assertNotNull($closed->check_out_time);
+        $this->assertSame('13:00:00', $closed->check_out_time);
+        $this->assertSame(1200, $closed->duration_minutes);
+        $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_middleware_does_not_close_recent_session(): void
+    {
+        // Day 1, 09:00 — employee checks in.
+        Carbon::setTestNow(Carbon::parse('2026-09-02 09:00:00'));
+
+        $user = $this->makeUserWithEmployee();
+        $emp  = Employee::where('user_id', $user->id)->firstOrFail();
+
+        $service = app(CustomAttendanceService::class);
+        $service->startSession($emp, [], 'mobile');
+
+        // Same day, 19:00 — only 10 hours elapsed, session must stay open.
+        Carbon::setTestNow(Carbon::parse('2026-09-02 19:00:00'));
+
+        Sanctum::actingAs($user);
+        $response = $this->getJson('/api/attendance/my-records');
+
+        $response->assertOk();
+
+        $stillOpen = $service->openSession($emp);
+        $this->assertNotNull($stillOpen);
+        $this->assertTrue($stillOpen->isOpen());
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_stale_session_cleanup_on_checkin_without_cron(): void
+    {
+        // Day 1, 18:00 — employee checks in and forgets to check out.
+        Carbon::setTestNow(Carbon::parse('2026-09-01 18:00:00'));
+
+        $emp   = $this->makeEmployee(5000, custom: true);
+        $shift = $this->makeShift('09:00:00', '17:00:00', 15);
+        $this->assignShift($emp, $shift);
+
+        $service = app(CustomAttendanceService::class);
+        $service->startSession($emp, [], 'mobile');
+        $oldLog = $service->openSession($emp);
+        $this->assertNotNull($oldLog);
+
+        // Day 2, 16:00 — 22 hours later (NO cron has run in between) the employee
+        // checks in again: the app cleans the stale session itself and opens a new one.
+        Carbon::setTestNow(Carbon::parse('2026-09-02 16:00:00'));
+
+        $result = $service->startSession($emp, [], 'mobile');
+        $this->assertTrue($result['success'], 'New check-in should succeed: ' . ($result['message'] ?? ''));
+
+        // Old session auto-closed at check-in + 20h = 14:00 next day, marked.
+        $closed = $oldLog->fresh();
+        $this->assertNotNull($closed->check_out_time);
+        $this->assertSame('14:00:00', $closed->check_out_time);
+        $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
+
+        // A brand-new open session exists for the new day.
+        $newLog = $service->openSession($emp);
+        $this->assertNotNull($newLog);
+        $this->assertNotSame($closed->id, $newLog->id);
+        $this->assertSame('2026-09-02', $newLog->log_date->toDateString());
+        $this->assertTrue($newLog->isOpen());
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_middleware_admin_cleans_all_employees_stale_sessions(): void
+    {
+        // Day 1, 17:00 — two custom employees check in and forget to check out.
+        Carbon::setTestNow(Carbon::parse('2026-09-01 17:00:00'));
+
+        $empA = $this->makeEmployee(5000, custom: true);
+        $empB = $this->makeEmployee(5000, custom: true);
+
+        $service = app(CustomAttendanceService::class);
+        $service->startSession($empA, [], 'mobile');
+        $service->startSession($empB, [], 'mobile');
+
+        $logA = $service->openSession($empA);
+        $logB = $service->openSession($empB);
+        $this->assertNotNull($logA);
+        $this->assertNotNull($logB);
+
+        // A super-admin with NO employee record signs in.
+        // Create role in test DB (no seed data).
+        Role::create(['name' => 'super_admin', 'description' => 'System admin']);
+
+        $admin = User::create([
+            'name'     => 'Super Admin ' . self::$seq,
+            'email'    => 'superadmin_' . uniqid() . '@example.com',
+            'password' => 'password',
+        ]);
+        $admin->giveRole('super_admin');
+        $this->assertTrue($admin->hasRole('super_admin'), 'Role must be attached');
+
+        // ...22 hours later: their plain request must sweep BOTH employees'
+        // stale sessions even though the admin owns neither of them.
+        Carbon::setTestNow(Carbon::parse('2026-09-02 15:00:00'));
+
+        Sanctum::actingAs($admin);
+        $response = $this->getJson('/api/attendance/my-records');
+        $response->assertOk();
+
+        foreach ([$logA, $logB] as $log) {
+            $closed = $log->fresh();
+            $this->assertNotNull($closed->check_out_time);
+            $this->assertSame('13:00:00', $closed->check_out_time);
+            $this->assertSame(1200, $closed->duration_minutes);
+            $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
+        }
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_checkin_status_aligns_with_applied_deduction(): void
+    {
+        // Two independent standard employees on the same 09:00-17:00 shift
+        // (grace 15 min). 21 raw minutes late = 6 effective minutes, which the
+        // minutes rule (1-119 = EGP 5/min) will deduct 30 for at check-out.
+        Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00'));
+
+        $graceEmp = $this->makeEmployee();
+        $lateEmp  = $this->makeEmployee();
+        $shift    = $this->makeShift('09:00:00', '17:00:00', 15);
+        $this->assignShift($graceEmp, $shift);
+        $this->assignShift($lateEmp, $shift);
+
+        $controller = new AttendanceController(app(AttendancePenaltyService::class));
+
+        // 09:14 = inside the 15-minute grace -> present, no late/penalty.
+        $graceReq = Request::create('/api/attendance/check-in', 'POST', [
+            'employee_id'         => $graceEmp->id,
+            'custom_check_in_time' => '09:14:00',
+        ], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $gracePayload = json_decode($controller->checkIn($graceReq)->getContent(), true);
+
+        $this->assertTrue($gracePayload['success'], 'Grace check-in failed: ' . ($gracePayload['message'] ?? ''));
+        $this->assertSame('present', $gracePayload['status']);
+        $this->assertSame(0, $gracePayload['late_minutes']);
+        $this->assertNull($gracePayload['applied_deduction_type']);
+
+        // 09:21 = beyond grace -> late, 21 raw / 6 effective, minutes@5 = 30.
+        $lateReq = Request::create('/api/attendance/check-in', 'POST', [
+            'employee_id'         => $lateEmp->id,
+            'custom_check_in_time' => '09:21:00',
+        ], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $latePayload = json_decode($controller->checkIn($lateReq)->getContent(), true);
+
+        $this->assertTrue($latePayload['success'], 'Late check-in failed: ' . ($latePayload['message'] ?? ''));
+        $this->assertSame('late', $latePayload['status']);
+        $this->assertSame(21, $latePayload['late_minutes']);
+        $this->assertSame('minutes', $latePayload['applied_deduction_type']);
+
+        // The deduction the rule ladder attaches to that status.
+        $lateRecord = Attendance::where('employee_id', $lateEmp->id)->firstOrFail();
+        $processed  = app(AttendancePenaltyService::class)->processAttendance($lateRecord->fresh());
+        $this->assertSame('minutes', $processed->applied_late_deduction_type);
+        $this->assertEqualsWithDelta(30.0, $processed->deduction_amount, 0.01);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_standard_auto_close_stamps_auto_closed_note(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 10:00:00'));
+
+        $emp   = $this->makeEmployee();
+        $shift = $this->makeShift('09:00:00', '17:00:00', 15);
+        $this->assignShift($emp, $shift);
+
+        $att = Attendance::create([
+            'employee_id'     => $emp->id,
+            'attendance_date' => '2026-09-01',
+            'check_in_time'   => '10:00:00',
+            'shift_id'        => $shift->id,
+            'status'          => 'present',
+        ]);
+
+        // Check-in + 20h = 06:00 next day; by 2026-09-03 the record is stale.
+        Carbon::setTestNow(Carbon::parse('2026-09-03 09:00:00'));
+
+        $svc = app(AttendancePenaltyService::class);
+        $this->assertTrue($svc->isOpenRecordStale($att->fresh(), now()));
+        $this->assertContains((int) $att->id, $svc->autoCloseForgotten());
+
+        $closed = $att->fresh();
+        $this->assertNotNull($closed->check_out_time);
+        $this->assertSame('06:00:00', $closed->check_out_time);
+        $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
 
         Carbon::setTestNow(null);
     }
