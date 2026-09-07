@@ -18,6 +18,9 @@ class CustomAttendanceService
     public function startSession(Employee $employee, array $data = [], string $source = 'mobile'): array
     {
         return DB::transaction(function () use ($employee, $data, $source) {
+            // Auto-close any stale open sessions before checking.
+            $this->autoCloseStaleSessions($employee->id);
+
             if ($this->openSession($employee)) {
                 return [
                     'success' => false,
@@ -108,9 +111,49 @@ class CustomAttendanceService
     public function openSession(Employee $employee): ?AttendanceLog
     {
         return AttendanceLog::where('employee_id', $employee->id)
-            ->whereDate('log_date', today())
             ->whereNull('check_out_time')
+            ->latest('check_in_time')
             ->first();
+    }
+
+    /**
+     * Auto-close all stale open sessions for custom-attendance employees.
+     * A session is stale when its check-in time is older than the configured
+     * auto_close_after_hours (default 20 hours).
+     *
+     * @return int number of sessions closed
+     */
+    public function autoCloseStaleSessions(?int $employeeId = null): int
+    {
+        $hours = (float) config('hr.working_hours.auto_close_after_hours', 20);
+        $cutoff = now()->subHours($hours);
+
+        $query = AttendanceLog::whereNull('check_out_time')
+            ->where('check_in_time', '<', $cutoff->toTimeString())
+            ->where('log_date', '<', $cutoff->toDateString());
+
+        if ($employeeId !== null) {
+            $query->where('employee_id', $employeeId);
+        }
+
+        $closed = 0;
+
+        foreach ($query->get() as $log) {
+            $checkInAt = $log->checkInAt();
+            $autoCheckOut = $checkInAt->copy()->addHours($hours);
+
+            $durationMinutes = max(0, (int) $checkInAt->diffInMinutes($autoCheckOut));
+
+            $log->update([
+                'check_out_time' => $autoCheckOut->toTimeString(),
+                'duration_minutes' => $durationMinutes,
+            ]);
+
+            $this->recalculateDay($log->attendance_id);
+            $closed++;
+        }
+
+        return $closed;
     }
 
     /**

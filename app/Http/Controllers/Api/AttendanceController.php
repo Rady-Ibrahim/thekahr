@@ -488,6 +488,9 @@ class AttendanceController
 
         // ── Custom flexible attendance: close the open session & re-aggregate ──
         if ($employee->isCustomAttendance()) {
+            // Auto-close any stale open sessions before looking for the active one.
+            $this->customService->autoCloseStaleSessions($employee->id);
+
             $openSession = $this->customService->openSession($employee);
 
             if (!$openSession) {
