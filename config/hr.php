@@ -1,6 +1,11 @@
 <?php
 
 return [
+    // Allow client-supplied check-in/check-out timestamps (custom_check_in_time /
+    // custom_check_out_time) outside local/testing/staging. Useful for QA / Postman
+    // simulation against production. Disabled by default for safety.
+    'allow_timestamp_override' => env('HR_ALLOW_TIMESTAMP_OVERRIDE', false),
+
     // Employee Statuses
     'employee_statuses' => [
         'active' => 'نشط',

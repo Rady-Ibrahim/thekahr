@@ -18,9 +18,9 @@ class CustomAttendanceService
      * Start a new work session (check-in) for a custom-attendance employee.
      * Multiple completed sessions per day are allowed; only one open session at a time.
      */
-    public function startSession(Employee $employee, array $data = [], string $source = 'mobile'): array
+    public function startSession(Employee $employee, array $data = [], string $source = 'mobile', ?Carbon $now = null): array
     {
-        return DB::transaction(function () use ($employee, $data, $source) {
+        return DB::transaction(function () use ($employee, $data, $source, $now) {
             // Auto-close any stale open sessions before checking.
             $this->autoCloseStaleSessions($employee->id);
 
@@ -31,7 +31,8 @@ class CustomAttendanceService
                 ];
             }
 
-            $today = today()->toDateString();
+            $now = $now ?? now();
+            $today = $now->toDateString();
             $attendance = Attendance::firstOrCreate(
                 ['employee_id' => $employee->id, 'attendance_date' => $today],
                 [
@@ -53,7 +54,7 @@ class CustomAttendanceService
                 'employee_id' => $employee->id,
                 'attendance_id' => $attendance->id,
                 'log_date' => $today,
-                'check_in_time' => now()->toTimeString(),
+                'check_in_time' => $now->toTimeString(),
                 'check_in_latitude' => $data['latitude'] ?? null,
                 'check_in_longitude' => $data['longitude'] ?? null,
                 'check_in_photo' => $checkInPhoto,
@@ -72,9 +73,9 @@ class CustomAttendanceService
     /**
      * End the open session (check-out), compute its duration and re-aggregate the day.
      */
-    public function endSession(AttendanceLog $log, array $data = []): array
+    public function endSession(AttendanceLog $log, array $data = [], ?Carbon $now = null): array
     {
-        return DB::transaction(function () use ($log, $data) {
+        return DB::transaction(function () use ($log, $data, $now) {
             if (!$log->isOpen()) {
                 return ['success' => false, 'message' => 'تم تسجيل الانصراف لهذه الجلسة مسبقاً'];
             }
@@ -83,14 +84,17 @@ class CustomAttendanceService
                 ? $data['photo']->store('attendance/checkout', 'public')
                 : null;
 
-            $now = now();
+            $now = $now ?? now();
+            $checkInAt = $log->checkInAt();
 
-            // Handle sessions spanning midnight.
-            if ($now->lessThan($log->checkInAt())) {
+            // Handle sessions spanning midnight: a clock-time-only override (or the
+            // real now()) may fall before the check-in clock time but actually belongs
+            // to the next day, so bump it forward to keep the duration positive.
+            if ($now->lessThan($checkInAt)) {
                 $now->addDay();
             }
 
-            $durationMinutes = max(0, (int) $log->checkInAt()->diffInMinutes($now));
+            $durationMinutes = max(0, (int) $checkInAt->diffInMinutes($now));
 
             $log->update([
                 'check_out_time' => $now->toTimeString(),

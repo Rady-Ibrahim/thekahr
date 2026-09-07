@@ -333,18 +333,25 @@ class AttendanceController
             return null;
         }
 
-        if (!app()->environment(['local', 'testing', 'staging'])) {
+        // Allow timestamp overrides for local/testing/staging, plus a config flag
+        // so staging/QA (or Postman against production) can simulate clock times.
+        if (!app()->environment(['local', 'testing', 'staging'])
+            && !(bool) config('hr.allow_timestamp_override', false)) {
             return null;
         }
 
         try {
+            // Resolve against the app timezone so a bare "H:i:s" or "Y-m-d H:i:s"
+            // always lands on the configured local clock (Africa/Cairo), never UTC.
+            $tz = config('app.timezone', 'Africa/Cairo');
+
             if (str_contains($value, ' ')) {
                 // Full datetime "Y-m-d H:i:s".
-                return Carbon::createFromFormat('Y-m-d H:i:s', $value);
+                return Carbon::createFromFormat('Y-m-d H:i:s', $value, $tz);
             }
 
-            // Time-of-day only "H:i:s" -> applied to today.
-            return Carbon::createFromFormat('H:i:s', $value);
+            // Time-of-day only "H:i:s" -> applied to today in the app timezone.
+            return Carbon::createFromFormat('H:i:s', $value, $tz);
         } catch (\Throwable $e) {
             return null;
         }
@@ -380,7 +387,8 @@ class AttendanceController
                     'longitude' => $validated['longitude'] ?? null,
                     'photo' => $photo,
                 ],
-                $this->isAdminUser() ? 'admin' : 'mobile'
+                $this->isAdminUser() ? 'admin' : 'mobile',
+                $customNow
             );
 
             if (!$result['success']) {
@@ -506,7 +514,7 @@ class AttendanceController
                 'latitude' => $validated['latitude'] ?? null,
                 'longitude' => $validated['longitude'] ?? null,
                 'photo' => $request->hasFile('photo') ? $request->file('photo') : null,
-            ]);
+            ], $customNow);
 
             if (!$result['success']) {
                 return response()->json(['success' => false, 'message' => $result['message']], 422);
@@ -1260,8 +1268,18 @@ class AttendanceController
         $locations = WorkLocation::where('is_active', true)->get();
 
         foreach ($locations as $location) {
-            $distance = $this->haversineDistance($lat, $lng, $location->latitude, $location->longitude);
-            if ($distance <= $location->radius_meters) {
+            // Guard against work locations with missing/invalid coordinates so we
+            // never attempt a distance calculation that could error out and break
+            // the whole check-in with "تعذر الحصول على الموقع".
+            $workLat = is_numeric($location->latitude) ? (float) $location->latitude : null;
+            $workLng = is_numeric($location->longitude) ? (float) $location->longitude : null;
+
+            if ($workLat === null || $workLng === null || !is_finite($workLat) || !is_finite($workLng)) {
+                continue;
+            }
+
+            $distance = $this->haversineDistance($lat, $lng, $workLat, $workLng);
+            if ($distance <= (float) $location->radius_meters) {
                 return [
                     'id'       => $location->id,
                     'name'     => $location->name,
@@ -1271,15 +1289,32 @@ class AttendanceController
             }
         }
 
+        // No active/valid work location exists, or the coordinates fall outside every
+        // branch radius. When the company allows attendance from anywhere (no branch
+        // restriction and no geo fences configured), reported coords are within by default.
+        if ($locations->isEmpty()) {
+            return [
+                'id'       => null,
+                'name'     => null,
+                'within'   => true,
+                'distance' => 0,
+            ];
+        }
+
         return ['id' => null, 'name' => null, 'within' => false, 'distance' => null];
     }
 
     private function haversineDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
     {
+        if (!is_finite($lat1) || !is_finite($lon1) || !is_finite($lat2) || !is_finite($lon2)) {
+            return PHP_FLOAT_MAX;
+        }
+
         $earthRadius = 6371000;
         $dLat = deg2rad($lat2 - $lat1);
         $dLon = deg2rad($lon2 - $lon1);
         $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+        $a = max(0, min(1, $a));
         return $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
