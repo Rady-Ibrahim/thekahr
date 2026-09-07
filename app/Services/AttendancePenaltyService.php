@@ -391,6 +391,22 @@ class AttendancePenaltyService
         return $attendance->fresh();
     }
 
+    /**
+     * Recalculate penalties for an attendance record using an explicitly resolved shift.
+     *
+     * This is the entry point for the artisan command: the caller has already
+     * determined the correct shift (attendance.shift or employee default), so
+     * we pin it on the record and delegate to processAttendance for the full
+     * late / early-exit / deduction calculation.
+     */
+    public function recalculatePenaltyForAttendance(Attendance $attendance, Shift $shift): Attendance
+    {
+        $attendance->shift_id = $shift->id;
+        $attendance->setRelation('shift', $shift);
+
+        return $this->processAttendance($attendance);
+    }
+
     public function calculateAttendanceDeductionForSalary(Employee $employee, int $month, int $year, float $baseSalary): array
     {
         $workingDays = $this->getWorkingDaysInMonth($month, $year);
