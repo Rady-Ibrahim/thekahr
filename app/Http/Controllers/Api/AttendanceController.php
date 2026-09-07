@@ -1076,6 +1076,7 @@ class AttendanceController
                 'check_in_time' => $firstCheckIn,
                 'check_out_time' => $lastCheckOut,
                 'late_minutes' => $empRecords->sum('late_minutes'),
+                'deduction_amount' => round((float) $empRecords->sum('deduction_amount'), 2),
                 'status' => $hasOpen ? 'present' : ($best->status ?? 'present'),
             ];
 
@@ -1102,6 +1103,7 @@ class AttendanceController
                 'check_in_time' => $a->check_in_time,
                 'check_out_time' => $a->check_out_time,
                 'late_minutes' => $a->late_minutes,
+                'deduction_amount' => round((float) ($a->deduction_amount ?? 0), 2),
             ])->values();
         };
 

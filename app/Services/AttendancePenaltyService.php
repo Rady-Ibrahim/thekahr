@@ -190,9 +190,10 @@ class AttendancePenaltyService
     {
         $scheduledStart = Carbon::parse($date->toDateString() . ' ' . $shift->start_time);
         $actualDelayMinutes = (int) $scheduledStart->diffInMinutes($checkInTime, false);
-        $effectiveDelay = max(0, $actualDelayMinutes - $shift->grace_period_minutes);
+        $graceMinutes = (int) ($shift->grace_period_minutes ?? 0);
 
-        if ($effectiveDelay <= 0) {
+        // Strict grace period: the first N minutes of lateness (default 15) are free.
+        if ($actualDelayMinutes <= $graceMinutes) {
             return [
                 'late_minutes' => 0,
                 'effective_delay' => 0,
@@ -201,17 +202,22 @@ class AttendancePenaltyService
             ];
         }
 
+        // Beyond the grace the free minutes are forfeited: the shift's own penalty
+        // tier is matched against the TOTAL delay (not just the excess), so e.g. a
+        // 21-minute lateness on a quarter-day tier triggers the quarter-day value.
         $rules = $shift->lateRules()->orderBy('min_delay_minutes')->get();
         $matchedRule = null;
 
         foreach ($rules as $rule) {
-            if ($effectiveDelay >= $rule->min_delay_minutes) {
-                if ($rule->max_delay_minutes === null || $effectiveDelay <= $rule->max_delay_minutes) {
+            if ($actualDelayMinutes >= $rule->min_delay_minutes) {
+                if ($rule->max_delay_minutes === null || $actualDelayMinutes <= $rule->max_delay_minutes) {
                     $matchedRule = $rule;
                     break;
                 }
             }
         }
+
+        $effectiveDelay = $actualDelayMinutes - $graceMinutes;
 
         if (!$matchedRule) {
             return [
@@ -222,7 +228,7 @@ class AttendancePenaltyService
             ];
         }
 
-        $amount = $this->resolveAmount($matchedRule->deduction_type, $matchedRule->deduction_value, (float) ($employee?->base_salary ?? 0), $effectiveDelay);
+        $amount = $this->resolveAmount($matchedRule->deduction_type, $matchedRule->deduction_value, (float) ($employee?->base_salary ?? 0), $actualDelayMinutes);
 
         return [
             'late_minutes' => $actualDelayMinutes,

@@ -126,8 +126,8 @@ class AttendanceFlowTest extends TestCase
         // 60 minutes late, 15 grace → 45 effective delay
         $this->assertSame(60, $processed->late_minutes);
         $this->assertSame('minutes', $processed->applied_late_deduction_type);
-        // 45 × 5 EGP/minute = 225
-        $this->assertEqualsWithDelta(225.0, $processed->deduction_amount, 0.01);
+        // Beyond the grace the free minutes are forfeited → 60 × 5 EGP/minute = 300
+        $this->assertEqualsWithDelta(300.0, $processed->deduction_amount, 0.01);
         $this->assertEquals($shift->id, $processed->shift_id);
 
         Carbon::setTestNow(null);
@@ -647,8 +647,9 @@ class AttendanceFlowTest extends TestCase
     public function test_checkin_status_aligns_with_applied_deduction(): void
     {
         // Two independent standard employees on the same 09:00-17:00 shift
-        // (grace 15 min). 21 raw minutes late = 6 effective minutes, which the
-        // minutes rule (1-119 = EGP 5/min) will deduct 30 for at check-out.
+        // (grace 15 min). 21 raw minutes late exceeds the grace, so the free
+        // 15 minutes are forfeited and the minutes rule (1-119 = EGP 5/min)
+        // charges the full 21 minutes = 105 at check-in/out.
         Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00'));
 
         $graceEmp = $this->makeEmployee();
@@ -671,7 +672,7 @@ class AttendanceFlowTest extends TestCase
         $this->assertSame(0, $gracePayload['late_minutes']);
         $this->assertNull($gracePayload['applied_deduction_type']);
 
-        // 09:21 = beyond grace -> late, 21 raw / 6 effective, minutes@5 = 30.
+        // 09:21 = beyond grace -> late, 21 raw, minutes@5 = 105.
         $lateReq = Request::create('/api/attendance/check-in', 'POST', [
             'employee_id'         => $lateEmp->id,
             'custom_check_in_time' => '09:21:00',
@@ -687,7 +688,7 @@ class AttendanceFlowTest extends TestCase
         $lateRecord = Attendance::where('employee_id', $lateEmp->id)->firstOrFail();
         $processed  = app(AttendancePenaltyService::class)->processAttendance($lateRecord->fresh());
         $this->assertSame('minutes', $processed->applied_late_deduction_type);
-        $this->assertEqualsWithDelta(30.0, $processed->deduction_amount, 0.01);
+        $this->assertEqualsWithDelta(105.0, $processed->deduction_amount, 0.01);
 
         Carbon::setTestNow(null);
     }
@@ -719,6 +720,137 @@ class AttendanceFlowTest extends TestCase
         $this->assertNotNull($closed->check_out_time);
         $this->assertSame('06:00:00', $closed->check_out_time);
         $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_late_beyond_grace_applies_shift_tier_on_total_delay(): void
+    {
+        // Acceptance #1: Eman/Salma arrive 09:21 / 09:22 (grace 15 min). Once the
+        // grace is exceeded the free minutes are voided and the shift's own tier
+        // (16-60 min = quarter_day) applies immediately instead of tiny per-minute.
+        Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00'));
+
+        $graceEmp = $this->makeEmployee(5000);
+        $lateEmp  = $this->makeEmployee(5000);
+
+        $shift = Shift::create([
+            'name'                 => 'Pharmacy Shift',
+            'start_time'           => '09:00:00',
+            'end_time'             => '17:00:00',
+            'grace_period_minutes' => 15,
+            'is_active'            => true,
+        ]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 1,  'max_delay_minutes' => 15,  'deduction_type' => 'minutes',     'deduction_value' => 5]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 16, 'max_delay_minutes' => 60,  'deduction_type' => 'quarter_day', 'deduction_value' => 50]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 61, 'max_delay_minutes' => 240, 'deduction_type' => 'half_day',    'deduction_value' => 100]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 241, 'max_delay_minutes' => null, 'deduction_type' => 'full_day',  'deduction_value' => 200]);
+
+        $this->assignShift($graceEmp, $shift);
+        $this->assignShift($lateEmp, $shift);
+
+        // 09:14 → inside grace: nothing charged.
+        $graceAtt = Attendance::create([
+            'employee_id'     => $graceEmp->id,
+            'attendance_date' => '2026-09-10',
+            'check_in_time'   => '09:14:00',
+            'status'          => 'present',
+        ]);
+        $graceResult = app(AttendancePenaltyService::class)->processAttendance($graceAtt->fresh());
+
+        $this->assertSame(0, $graceResult->late_minutes);
+        $this->assertNull($graceResult->applied_late_deduction_type);
+        $this->assertEquals(0.0, (float) $graceResult->deduction_amount);
+
+        // 09:21 → past the 15-min grace: quarter_day applies on the total delay.
+        $lateAtt = Attendance::create([
+            'employee_id'     => $lateEmp->id,
+            'attendance_date' => '2026-09-10',
+            'check_in_time'   => '09:21:00',
+            'status'          => 'present',
+        ]);
+        $lateResult = app(AttendancePenaltyService::class)->processAttendance($lateAtt->fresh());
+
+        $this->assertSame(21, $lateResult->late_minutes);
+        $this->assertSame('quarter_day', $lateResult->applied_late_deduction_type);
+        $this->assertEqualsWithDelta(50.0, $lateResult->deduction_amount, 0.01);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_custom_session_duration_uses_session_date(): void
+    {
+        // Acceptance #3: a 17:07 -> 18:15 session must be exactly 68 minutes, never
+        // inflated (previously 4252) by anchoring against a far-away wall clock.
+        Carbon::setTestNow(Carbon::parse('2026-09-10 17:07:00'));
+
+        $emp     = $this->makeEmployee(5000, custom: true);
+        $service = app(CustomAttendanceService::class);
+
+        $checkIn = $service->startSession($emp, [], 'mobile');
+        $this->assertTrue($checkIn['success']);
+
+        $open = $service->openSession($emp);
+        $this->assertNotNull($open);
+
+        $checkOut = $service->endSession($open, [], Carbon::parse('2026-09-10 18:15:00'));
+        $this->assertTrue($checkOut['success']);
+        $this->assertSame(68, $checkOut['session_duration_minutes']);
+
+        // The main attendance record mirrors first check-in / last closed check-out.
+        $att = Attendance::where('employee_id', $emp->id)
+            ->where('attendance_date', '2026-09-10')
+            ->firstOrFail();
+        $this->assertSame('17:07:00', $att->check_in_time);
+        $this->assertSame('18:15:00', $att->check_out_time);
+        $this->assertSame(68, (int) $att->total_worked_minutes);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_today_summary_exposes_custom_times_and_deduction(): void
+    {
+        // Acceptance #2: a custom-attendance employee's session times and shortfall
+        // deduction must surface in the dashboard list instead of "--".
+        Carbon::setTestNow(Carbon::parse('2026-09-10 12:00:00'));
+
+        $user = User::create([
+            'name'     => 'Dashboard Emp',
+            'email'    => 'dashboard_' . uniqid() . '@example.com',
+            'password' => bcrypt('secret'),
+        ]);
+
+        $emp = $this->makeEmployee(5000, custom: true);
+        $emp->update(['user_id' => $user->id]);
+
+        $att = Attendance::create([
+            'employee_id'      => $emp->id,
+            'attendance_date'  => '2026-09-10',
+            'status'           => 'present',
+            'required_hours'   => 8,
+        ]);
+
+        AttendanceLog::create([
+            'employee_id'     => $emp->id,
+            'attendance_id'   => $att->id,
+            'log_date'        => '2026-09-10',
+            'check_in_time'   => '09:10:28',
+            'check_out_time'  => '15:54:21',
+            'duration_minutes'=> 404,
+            'source'          => 'mobile',
+        ]);
+
+        app(CustomAttendanceService::class)->recalculateDay($att->id);
+
+        $response = $this->actingAs($user)->get('/api/attendance/today-summary');
+        $response->assertOk();
+        $payload = json_decode($response->getContent(), true);
+
+        $row = collect($payload['data']['lists']['present'])->firstWhere('id', $att->id);
+        $this->assertNotNull($row, 'Custom employee must appear in today dashboard');
+        $this->assertSame('09:10:28', $row['check_in_time']);
+        $this->assertSame('15:54:21', $row['check_out_time']);
+        $this->assertGreaterThan(0, (float) $row['deduction_amount']);
 
         Carbon::setTestNow(null);
     }

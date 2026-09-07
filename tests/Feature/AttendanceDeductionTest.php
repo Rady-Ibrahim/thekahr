@@ -124,8 +124,8 @@ class AttendanceDeductionTest extends TestCase
         $processed = app(AttendancePenaltyService::class)->processAttendance($att);
         $result    = app(AttendancePenaltyService::class)->calculateRecordDeduction($processed);
 
-        // 30 min late, 15 beyond grace → 15 × 5 EGP/minute + half-day 100 EGP
-        $expected = round(15 * 5 + 100, 2);
+        // 30 min late, past grace → free minutes forfeited → 30 × 5 = 150, + half-day 100
+        $expected = round(30 * 5 + 100, 2);
 
         $this->assertEqualsWithDelta($expected, $result['amount'], 0.01);
         $this->assertStringContainsString('تأخير', $result['label']);
@@ -332,8 +332,8 @@ class AttendanceDeductionTest extends TestCase
         $this->assertSame(20, $att->late_minutes);
         $this->assertSame('minutes', $att->applied_late_deduction_type);
 
-        // 20 min late, 10 beyond grace → 10 × 5 EGP/minute
-        $this->assertEqualsWithDelta(10 * 5, app(AttendancePenaltyService::class)->calculateRecordDeduction($att)['amount'], 0.01);
+        // 20 min late, past the 10-min grace → free minutes forfeited → 20 × 5 EGP/minute
+        $this->assertEqualsWithDelta(20 * 5, app(AttendancePenaltyService::class)->calculateRecordDeduction($att)['amount'], 0.01);
     }
 
     public function test_salary_deduction_includes_early_exit(): void

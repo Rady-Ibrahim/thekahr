@@ -61,6 +61,10 @@ class CustomAttendanceService
                 'source' => $source,
             ]);
 
+            // Keep the main record's times readable by the dashboard immediately,
+            // not only after the first check-out.
+            $this->syncDashboardTimes($attendance->id);
+
             return [
                 'success' => true,
                 'message' => 'تم تسجيل الحضور بنجاح (جلسة رقم ' . ($attendance->logs()->count()) . ')',
@@ -89,20 +93,26 @@ class CustomAttendanceService
 
             // Handle sessions spanning midnight: a clock-time-only override (or the
             // real now()) may fall before the check-in clock time but actually belongs
-            // to the next day, so bump it forward to keep the duration positive.
+            // to the next day, so bump it forward to keep the stored clock sane.
             if ($now->lessThan($checkInAt)) {
                 $now->addDay();
             }
-
-            $durationMinutes = max(0, (int) $checkInAt->diffInMinutes($now));
 
             $log->update([
                 'check_out_time' => $now->toTimeString(),
                 'check_out_latitude' => $data['latitude'] ?? null,
                 'check_out_longitude' => $data['longitude'] ?? null,
                 'check_out_photo' => $checkOutPhoto,
-                'duration_minutes' => $durationMinutes,
             ]);
+
+            // Anchor the duration to the session's OWN log_date so overnight sessions
+            // (and simulated check-outs) never inflate it by leaping across dates: a
+            // 17:07→18:15 session must stay 68 minutes regardless of the wall clock.
+            $durationMinutes = $log->isOpen()
+                ? 0
+                : max(0, (int) $log->checkInAt()->diffInMinutes($log->checkOutAt()));
+
+            $log->update(['duration_minutes' => $durationMinutes]);
 
             $attendance = $this->recalculateDay($log->attendance_id);
 
@@ -324,7 +334,25 @@ class CustomAttendanceService
             'deduction_amount' => $hoursStatus === Attendance::HOURS_SHORTFALL ? $shortfallDeduction : 0.0,
         ]);
 
+        // Mirror the day's first check-in and latest closed check-out onto the main
+        // attendance record so dashboard queries read them directly (no more "--").
+        $this->syncDashboardTimes($attendanceId);
+
         return $attendance->fresh('logs');
+    }
+
+    /**
+     * Persist the first session's check-in and the latest CLOSED session's
+     * check-out onto the attendances row for the dashboard to read directly.
+     */
+    private function syncDashboardTimes(int $attendanceId): void
+    {
+        Attendance::whereKey($attendanceId)->update([
+            'check_in_time'  => AttendanceLog::where('attendance_id', $attendanceId)->min('check_in_time'),
+            'check_out_time' => AttendanceLog::where('attendance_id', $attendanceId)
+                ->whereNotNull('check_out_time')
+                ->max('check_out_time'),
+        ]);
     }
 
     /**
