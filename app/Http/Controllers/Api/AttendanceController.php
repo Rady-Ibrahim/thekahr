@@ -464,6 +464,7 @@ class AttendanceController
                 'late_minutes'              => $lateResult['late_minutes'],
                 'shift_id'                  => $shift?->id,
                 'applied_late_deduction_type' => $lateResult['deduction_type'],
+                'deduction_amount'          => round((float) ($lateResult['deduction_amount'] ?? 0), 2),
                 'check_in_location_id'      => $locationData['id'],
                 'check_in_location_name'    => $locationData['name'],
                 'is_within_location'        => $locationData['within'],
@@ -480,6 +481,7 @@ class AttendanceController
             'location'          => $locationData,
             'shift'             => $shift ? ['id' => $shift->id, 'name' => $shift->name, 'grace_period_minutes' => $shift->grace_period_minutes] : null,
             'applied_deduction_type' => $lateResult['deduction_type'],
+            'deduction_amount'  => round((float) ($lateResult['deduction_amount'] ?? 0), 2),
         ]);
     }
 

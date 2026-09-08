@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class CustomAttendanceService
 {
     /** Note stamped on auto-closed (forgotten) sessions. */
-    public const AUTO_CLOSED_NOTE = 'auto_closed';
+    public const AUTO_CLOSED_NOTE = 'إغلاق تلقائي بعد 20 ساعة';
 
     /**
      * Start a new work session (check-in) for a custom-attendance employee.

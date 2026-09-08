@@ -693,6 +693,54 @@ class AttendanceFlowTest extends TestCase
         Carbon::setTestNow(null);
     }
 
+    public function test_live_checkin_saves_shift_tier_amount_immediately(): void
+    {
+        // Acceptance: a 09:21 check-in on a shift with a 15-min grace and a
+        // 16-60 min "quarter_day = 50" tier must persist 50.00 to the attendances
+        // row at live check-in (no recalculate needed) and echo it in the response.
+        Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00'));
+
+        $emp = $this->makeEmployee(5000);
+
+        $shift = Shift::create([
+            'name'                 => 'Quarter Tier Shift',
+            'start_time'           => '09:00:00',
+            'end_time'             => '17:00:00',
+            'grace_period_minutes' => 15,
+            'is_active'            => true,
+        ]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 1,   'max_delay_minutes' => 15,  'deduction_type' => 'minutes',     'deduction_value' => 5]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 16,  'max_delay_minutes' => 60,  'deduction_type' => 'quarter_day', 'deduction_value' => 50]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 61,  'max_delay_minutes' => 240, 'deduction_type' => 'half_day',    'deduction_value' => 100]);
+        ShiftLateRule::create(['shift_id' => $shift->id, 'min_delay_minutes' => 241, 'max_delay_minutes' => null, 'deduction_type' => 'full_day',   'deduction_value' => 200]);
+
+        $this->assignShift($emp, $shift);
+
+        $request = Request::create('/api/attendance/check-in', 'POST', [
+            'employee_id'          => $emp->id,
+            'custom_check_in_time' => '09:21:00',
+        ], [], [], ['HTTP_ACCEPT' => 'application/json']);
+
+        $controller = new AttendanceController(app(AttendancePenaltyService::class));
+        $payload = json_decode($controller->checkIn($request)->getContent(), true);
+
+        // Live response carries the monetary value right away (no recalc).
+        $this->assertTrue($payload['success']);
+        $this->assertSame('late', $payload['status']);
+        $this->assertSame(21, $payload['late_minutes']);
+        $this->assertSame('quarter_day', $payload['applied_deduction_type']);
+        $this->assertEqualsWithDelta(50.0, $payload['deduction_amount'], 0.01);
+
+        // The attendances row persisted it immediately on check-in.
+        $saved = Attendance::where('employee_id', $emp->id)
+            ->where('attendance_date', '2026-09-10')
+            ->firstOrFail();
+        $this->assertSame('quarter_day', $saved->applied_late_deduction_type);
+        $this->assertEqualsWithDelta(50.0, $saved->deduction_amount, 0.01);
+
+        Carbon::setTestNow(null);
+    }
+
     public function test_standard_auto_close_stamps_auto_closed_note(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-01 10:00:00'));
@@ -851,6 +899,59 @@ class AttendanceFlowTest extends TestCase
         $this->assertSame('09:10:28', $row['check_in_time']);
         $this->assertSame('15:54:21', $row['check_out_time']);
         $this->assertGreaterThan(0, (float) $row['deduction_amount']);
+
+        Carbon::setTestNow(null);
+    }
+
+    public function test_auto_close_20h_old_session_updates_dashboard(): void
+    {
+        // A custom-attendance session opened 21 hours ago (log_date 2026-09-09,
+        // check-in 10:00) must be auto-closed when the request/sweep runs on
+        // 2026-09-10 07:00 (21h later). After closing, the note, the dashboard
+        // check-out time and the day's worked total must all be updated.
+        Carbon::setTestNow(Carbon::parse('2026-09-09 10:00:00'));
+
+        $emp     = $this->makeEmployee(5000, custom: true);
+        $service = app(CustomAttendanceService::class);
+
+        // Day 1, 10:00 — open a session.
+        $att = Attendance::create([
+            'employee_id'     => $emp->id,
+            'attendance_date' => '2026-09-09',
+            'status'          => 'present',
+            'required_hours'  => 8,
+        ]);
+
+        $log = AttendanceLog::create([
+            'employee_id'   => $emp->id,
+            'attendance_id' => $att->id,
+            'log_date'      => '2026-09-09',
+            'check_in_time' => '10:00:00',
+            'source'        => 'mobile',
+            'duration_minutes' => 0,
+        ]);
+
+        $this->assertTrue($log->isOpen());
+        $this->assertNull($att->check_in_time, 'Dashboard main record not synced until first close');
+
+        // 21 hours later the sweep must close it exactly at check-in + 20h = 06:00.
+        Carbon::setTestNow(Carbon::parse('2026-09-10 07:00:00'));
+        $closedCount = $service->autoCloseStaleSessions($emp->id);
+
+        $this->assertSame(1, $closedCount);
+
+        $closed = $log->fresh();
+        $this->assertFalse($closed->isOpen());
+        $this->assertSame('06:00:00', $closed->check_out_time);
+        $this->assertSame(1200, $closed->duration_minutes);
+        $this->assertSame(CustomAttendanceService::AUTO_CLOSED_NOTE, $closed->notes);
+
+        // Dashboard main record reflects the synced times (first in / last out).
+        $dag = $att->fresh();
+        $this->assertSame('10:00:00', $dag->check_in_time);
+        $this->assertSame('06:00:00', $dag->check_out_time);
+        // 20h close window → 1200 minutes of worked time, via recalculateDay.
+        $this->assertSame(1200, (int) $dag->total_worked_minutes);
 
         Carbon::setTestNow(null);
     }
