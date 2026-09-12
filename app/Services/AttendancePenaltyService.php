@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\EmployeeShift;
+use App\Models\HRSetting;
 use App\Models\Shift;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Config;
@@ -271,6 +272,34 @@ class AttendancePenaltyService
             ];
         }
 
+        // Global switch + per-employee switch. Minutes are still tracked for
+        // reporting, but no discount is applied when either disables the penalty.
+        if (!$this->earlyExitDeductionEnabled() || !$this->earlyExitEnabledFor($employee)) {
+            return [
+                'early_exit_minutes' => $earlyMinutes,
+                'actual_worked_hours' => $actualWorkedHours,
+                'deduction_type' => null,
+                'deduction_amount' => 0.0,
+            ];
+        }
+
+        // Per-employee override (custom type + value) replaces the shift tiers.
+        if ($employee && $employee->early_exit_deduction_type && $employee->early_exit_deduction_value !== null) {
+            $amount = $this->resolveAmount(
+                $employee->early_exit_deduction_type,
+                (float) $employee->early_exit_deduction_value,
+                (float) ($employee->base_salary ?? 0),
+                $earlyMinutes
+            );
+
+            return [
+                'early_exit_minutes' => $earlyMinutes,
+                'actual_worked_hours' => $actualWorkedHours,
+                'deduction_type' => $employee->early_exit_deduction_type,
+                'deduction_amount' => round($amount, 2),
+            ];
+        }
+
         $rules = $shift->earlyExitRules()->orderBy('min_early_minutes')->get();
         $matchedRule = null;
 
@@ -314,19 +343,39 @@ class AttendancePenaltyService
         ];
     }
 
-    public function calculateEarlyExitFromConfig(Carbon $checkInTime, Carbon $checkOutTime, Carbon $date): array
+    public function calculateEarlyExitFromConfig(Carbon $checkInTime, Carbon $checkOutTime, Carbon $date, ?Employee $employee = null): array
     {
         $end = Carbon::parse($date->toDateString() . ' ' . Config::get('hr.working_hours.check_out_time', '17:00'));
 
         $workedMinutes = (int) $checkInTime->diffInMinutes($checkOutTime);
         $earlyMinutes = max(0, (int) $checkOutTime->diffInMinutes($end, false));
 
+        $disabled = !$this->earlyExitDeductionEnabled() || !$this->earlyExitEnabledFor($employee);
+
         return [
             'early_exit_minutes' => $earlyMinutes,
             'actual_worked_hours' => round($workedMinutes / 60, 2),
-            'deduction_type' => $earlyMinutes > 0 ? 'minutes' : null,
+            'deduction_type' => $earlyMinutes > 0 && !$disabled ? 'minutes' : null,
             'deduction_amount' => 0.0,
         ];
+    }
+
+    /**
+     * Whether the early-exit discount is globally enabled. A single switch in
+     * the shifts page can disable the discount for every employee at once.
+     */
+    private function earlyExitDeductionEnabled(): bool
+    {
+        return (bool) HRSetting::get(HRSetting::EARLY_EXIT_DEDUCTION_ENABLED, true);
+    }
+
+    /**
+     * Whether an employee is eligible for the early-exit discount. When the
+     * per-employee switch is off, the employee never gets the discount.
+     */
+    private function earlyExitEnabledFor(?Employee $employee): bool
+    {
+        return $employee === null || $employee->early_exit_penalty_enabled !== false;
     }
 
     public function processAttendance(Attendance $attendance): Attendance
@@ -372,7 +421,7 @@ class AttendancePenaltyService
 
                 $earlyResult = $shift
                     ? $this->calculateEarlyExitPenalty($shift, $checkIn, $checkOut, $date, $employee)
-                    : $this->calculateEarlyExitFromConfig($checkIn, $checkOut, $date);
+                    : $this->calculateEarlyExitFromConfig($checkIn, $checkOut, $date, $employee);
             }
         }
 
@@ -385,6 +434,7 @@ class AttendancePenaltyService
 
         $totalDeduction = ($lateResult['deduction_amount'] ?? 0) + ($earlyResult['deduction_amount'] ?? 0);
         $attendance->deduction_amount = $totalDeduction;
+        $attendance->penalty_overridden = false;
 
         $attendance->save();
 

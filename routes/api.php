@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\EmployeePointController;
 use App\Http\Controllers\Api\ShiftController;
 use App\Http\Controllers\Api\EmployeeShiftController;
+use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ChatGroupController;
 use App\Http\Controllers\Api\IdealEmployeeController;
@@ -155,6 +156,12 @@ Route::middleware(['auth:sanctum', 'auto.close.attendance'])->group(function () 
         Route::get('/{id}',                [ShiftController::class, 'show']);
         Route::put('/{id}',                [ShiftController::class, 'update']);
         Route::delete('/{id}',             [ShiftController::class, 'destroy']);
+    });
+
+    // Settings
+    Route::prefix('settings')->group(function () {
+        Route::get('/attendance',              [SettingsController::class, 'attendance']);
+        Route::put('/attendance',              [SettingsController::class, 'updateAttendance']);
     });
 
     // Employee Shift Assignments

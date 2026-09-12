@@ -21,6 +21,7 @@ class Employee extends Model
         'national_id', 'date_of_birth', 'joining_date', 'position', 'department',
         'employee_type', 'sub_role', 'salary_type', 'base_salary', 'collection_commission_rate',
         'is_custom_attendance', 'daily_required_hours',
+        'early_exit_penalty_enabled', 'early_exit_deduction_type', 'early_exit_deduction_value',
         'status', 'car_license', 'car_number',
         'gps_device_id', 'reporting_manager_id', 'notes'
     ];
@@ -34,6 +35,8 @@ class Employee extends Model
         'collection_commission_rate' => 'decimal:2',
         'is_custom_attendance' => 'boolean',
         'daily_required_hours' => 'decimal:2',
+        'early_exit_penalty_enabled' => 'boolean',
+        'early_exit_deduction_value' => 'decimal:2',
         'employee_type' => EmployeeTypeEnum::class,
         'sub_role' => EmployeeSubRoleEnum::class,
     ];

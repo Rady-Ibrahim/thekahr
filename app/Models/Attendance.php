@@ -23,6 +23,7 @@ class Attendance extends Model
         'applied_late_deduction_type', 'applied_early_deduction_type',
         'deduction_amount', 'payroll_pushed',
         'total_worked_minutes', 'total_worked_hours', 'required_hours', 'hours_status',
+        'penalty_overridden',
     ];
 
     protected $casts = [
@@ -34,6 +35,7 @@ class Attendance extends Model
         'early_exit_minutes' => 'integer',
         'total_worked_minutes' => 'integer',
         'payroll_pushed' => 'boolean',
+        'penalty_overridden' => 'boolean',
     ];
 
     public function employee(): BelongsTo

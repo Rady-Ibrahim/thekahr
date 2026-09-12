@@ -97,6 +97,10 @@ class AttendanceController
             'check_in_time'   => 'nullable|date_format:H:i',
             'check_out_time'  => 'nullable|date_format:H:i',
             'late_minutes'    => 'nullable|integer|min:0',
+            'early_exit_minutes' => 'nullable|integer|min:0',
+            'applied_late_deduction_type' => 'nullable|string|max:50',
+            'applied_early_deduction_type' => 'nullable|string|max:50',
+            'deduction_amount' => 'nullable|numeric|min:0',
             'shift_id'        => 'nullable|exists:shifts,id',
             'notes'           => 'nullable|string',
         ], [
@@ -153,7 +157,9 @@ class AttendanceController
             ]
         );
 
-        if ($validated['status'] === 'absent') {
+        if (array_key_exists('deduction_amount', $validated)) {
+            $record = $this->applyPenaltyOverride($record, $validated);
+        } elseif ($validated['status'] === 'absent') {
             $record->update([
                 'late_minutes' => 0,
                 'working_hours' => 0,
@@ -161,6 +167,7 @@ class AttendanceController
                 'actual_worked_hours' => 0,
                 'applied_late_deduction_type' => 'full_day',
                 'deduction_amount' => 0,
+                'penalty_overridden' => false,
             ]);
         } elseif ($employee->isCustomAttendance()) {
             // No shift rules apply; keep aggregates from existing sessions.
@@ -216,6 +223,10 @@ class AttendanceController
             'check_in_time'   => 'nullable|date_format:H:i',
             'check_out_time'  => 'nullable|date_format:H:i',
             'late_minutes'    => 'nullable|integer|min:0',
+            'early_exit_minutes' => 'nullable|integer|min:0',
+            'applied_late_deduction_type' => 'nullable|string|max:50',
+            'applied_early_deduction_type' => 'nullable|string|max:50',
+            'deduction_amount' => 'nullable|numeric|min:0',
             'shift_id'        => 'nullable|exists:shifts,id',
             'notes'           => 'nullable|string',
         ], [
@@ -237,8 +248,13 @@ class AttendanceController
             'notes' => $validated['notes'] ?? $record->notes,
         ]);
 
-        if ($record->status === 'absent') {
-            $record->update(['deduction_amount' => 0]);
+        if (array_key_exists('deduction_amount', $validated)) {
+            $record = $this->applyPenaltyOverride($record, $validated);
+        } elseif ($record->status === 'absent') {
+            $record->update([
+                'deduction_amount' => 0,
+                'penalty_overridden' => false,
+            ]);
         } elseif ($record->employee?->isCustomAttendance()) {
             // Aggregates live in attendance_logs; keep the daily record in sync.
             $this->customService->recalculateDay($record->id);
@@ -279,6 +295,45 @@ class AttendanceController
         Attendance::findOrFail($id)->delete();
 
         return response()->json(['success' => true, 'message' => 'تم حذف سجل الحضور']);
+    }
+
+    /**
+     * Persist a manual override of the attendance penalties. Used when an admin
+     * edits the discount from the attendance screen (e.g. waive or increase the
+     * early-exit discount). Skipping auto-recomputation keeps the entered values
+     * as-is and flags the record so payroll uses them verbatim.
+     */
+    private function applyPenaltyOverride(Attendance $record, array $fields): Attendance
+    {
+        $payload = [
+            'late_minutes' => (int) ($record->late_minutes ?? 0),
+            'early_exit_minutes' => (int) ($record->early_exit_minutes ?? 0),
+            'actual_worked_hours' => $record->actual_worked_hours ?? 0,
+            'applied_late_deduction_type' => $record->applied_late_deduction_type,
+            'applied_early_deduction_type' => $record->applied_early_deduction_type,
+            'deduction_amount' => (float) $fields['deduction_amount'],
+            'penalty_overridden' => true,
+        ];
+
+        if (array_key_exists('late_minutes', $fields)) {
+            $payload['late_minutes'] = (int) $fields['late_minutes'];
+        }
+
+        if (array_key_exists('early_exit_minutes', $fields)) {
+            $payload['early_exit_minutes'] = (int) $fields['early_exit_minutes'];
+        }
+
+        if (array_key_exists('applied_late_deduction_type', $fields)) {
+            $payload['applied_late_deduction_type'] = $fields['applied_late_deduction_type'] ?: null;
+        }
+
+        if (array_key_exists('applied_early_deduction_type', $fields)) {
+            $payload['applied_early_deduction_type'] = $fields['applied_early_deduction_type'] ?: null;
+        }
+
+        $record->update($payload);
+
+        return $record->fresh(['employee', 'shift']);
     }
 
     /**

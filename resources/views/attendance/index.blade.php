@@ -280,7 +280,9 @@
                 <form id="attForm">
                     <input type="hidden" id="attId">
                     <div class="row g-3">
-                        <div class="col-12"><label class="form-label">الموظف *</label><select name="employee_id" id="atf_emp" class="form-select" data-lookup="employees" data-placeholder="اختر الموظف" required></select></div>
+                        <div class="col-12"><label class="form-label">الموظف *</label><select name="employee_id" id="atf_emp" class="form-select" data-lookup="employees" data-placeholder="اختر الموظف" required></select>
+                            <div class="small text-primary fw-semibold mt-1" id="atf_emp_info" style="display:none"></div>
+                        </div>
                         <div class="col-md-6"><label class="form-label">التاريخ *</label><input type="date" name="date" id="atf_date" class="form-control" required value="{{ date('Y-m-d') }}" max="{{ date('Y-m-d') }}"></div>
                         <div class="col-md-6"><label class="form-label">الحالة *</label>
                             <select name="status" id="atf_status" class="form-select" required>
@@ -300,6 +302,61 @@
                         <div class="col-12">
                             <div class="alert alert-info py-2 mb-0" style="font-size:.82rem" id="shiftInfoAlert">
                                 بداية العمل {{ config('hr.working_hours.check_in_time', '08:00') }}، سماح {{ config('hr.working_hours.late_threshold_minutes', 15) }} دقيقة.
+                            </div>
+                        </div>
+                        <div class="col-12" id="atf_penalty_box" style="display:none">
+                            <div class="border rounded p-3">
+                                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                    <div>
+                                        <div class="fw-bold" style="font-size:.85rem"><i class="fas fa-money-bill-wave text-danger me-1"></i> الخصم</div>
+                                        <small class="text-muted d-block" style="font-size:.75rem">فعّل التعديل اليدوي لتغيير الحساب، أو أبقِه مطفأً ليُحسب تلقائياً حسب القواعد</small>
+                                    </div>
+                                    <div class="form-check form-switch m-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="atf_manual" onchange="toggleManualOverride()">
+                                        <label class="form-check-label fw-semibold" for="atf_manual">تعديل يدوي</label>
+                                    </div>
+                                </div>
+                                <div class="row g-2" id="atf_penalty_fields" style="display:none">
+                                    <div class="col-6 col-md-3">
+                                        <label class="form-label mb-1" style="font-size:.75rem">دقائق التأخير</label>
+                                        <input type="number" id="atf_late_manual" class="form-control form-control-sm" min="0" value="0">
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <label class="form-label mb-1" style="font-size:.75rem">نوع خصم التأخير</label>
+                                        <select id="atf_late_type" class="form-select form-select-sm">
+                                            <option value="">— لا يوجد —</option>
+                                            <option value="quarter_day">ربع يوم</option>
+                                            <option value="half_day">نصف يوم</option>
+                                            <option value="full_day">يوم كامل</option>
+                                            <option value="percentage">نسبة مئوية</option>
+                                            <option value="fixed_amount">مبلغ ثابت</option>
+                                            <option value="minutes">عن كل دقيقة</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <label class="form-label mb-1" style="font-size:.75rem">دقائق الانصراف المبكر</label>
+                                        <input type="number" id="atf_early" class="form-control form-control-sm" min="0" value="0">
+                                    </div>
+                                    <div class="col-6 col-md-3">
+                                        <label class="form-label mb-1" style="font-size:.75rem">نوع خصم الانصراف المبكر</label>
+                                        <select id="atf_early_type" class="form-select form-select-sm">
+                                            <option value="">— لا يوجد —</option>
+                                            <option value="quarter_day">ربع يوم</option>
+                                            <option value="half_day">نصف يوم</option>
+                                            <option value="full_day">يوم كامل</option>
+                                            <option value="percentage">نسبة مئوية</option>
+                                            <option value="fixed_amount">مبلغ ثابت</option>
+                                            <option value="minutes">عن كل دقيقة</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 col-md-4">
+                                        <label class="form-label mb-1" style="font-size:.75rem">إجمالي الخصم</label>
+                                        <input type="number" id="atf_deduction_amount" class="form-control form-control-sm" min="0" step="0.01" value="0" required>
+                                    </div>
+                                    <div class="col-12 col-md-8 d-flex align-items-center">
+                                        <small class="text-muted" style="font-size:.72rem">عند الحفظ يُستخدم هذا الخصم كما هو دون إعادة حساب تلقائية.</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="col-12"><label class="form-label">ملاحظات</label><textarea name="notes" id="atf_notes" class="form-control" rows="2"></textarea></div>
@@ -740,8 +797,8 @@ async function loadAttendance(page = 1) {
             <td>${a.check_out_time ?? '-'}</td>
             <td>${lateText(a.late_minutes ?? 0, a.applied_late_deduction_type)}</td>
             <td>${a.early_exit_minutes ? earlyText(a.early_exit_minutes, a.applied_early_deduction_type) : '-'}</td>
-            <td>${a.salary_deduction_amount > 0
-                ? `<span class="fw-bold text-danger">-${Number(a.salary_deduction_amount).toLocaleString()} ج.م</span><br><small class="text-muted">${a.salary_deduction_label ?? ''}</small>`
+            <td>${(a.salary_deduction_amount > 0 || a.penalty_overridden)
+                ? `<span class="fw-bold text-danger">-${Number(a.salary_deduction_amount ?? 0).toLocaleString()} ج.م</span><br><small class="text-muted">${a.salary_deduction_label ?? ''}</small>${a.penalty_overridden ? '<span class="badge-status badge-pending d-inline-block mt-1"><i class="fas fa-pen"></i> تعديل يدوي</span>' : ''}`
                 : '-'}</td>
             <td>${a.actual_worked_hours ? Number(a.actual_worked_hours).toFixed(2) : (a.working_hours ?? '-')}${(a.hours_status || a.logs_count > 0) ? `<br><small class="text-muted"><i class="fas fa-layer-group"></i> ${a.logs_count ?? 0} جلسة${a.required_hours ? ` / مطلوب ${Number(a.required_hours).toFixed(2)} س` : ''}</small>` : ''}</td>
             <td>${a.hours_status
@@ -840,6 +897,10 @@ function openAddAttModal() {
     document.getElementById('atf_date').value='{{ date("Y-m-d") }}';
     document.getElementById('atf_status').value='present';
     document.getElementById('atf_late').value='';
+    document.getElementById('atf_emp_info').style.display='none';
+    document.getElementById('atf_penalty_box').style.display='none';
+    document.getElementById('atf_penalty_fields').style.display='none';
+    document.getElementById('atf_manual').checked=false;
     updateDeductionPreview();
     updateShiftAlert();
     new bootstrap.Modal(document.getElementById('attAddModal')).show();
@@ -850,7 +911,13 @@ async function openEditAttModal(id) {
     new bootstrap.Modal(document.getElementById('attAddModal')).show();
     const r=await apiFetch('/attendance/'+id); if(!r.success) return; const a=r.data;
     document.getElementById('attId').value=a.id;
-    document.getElementById('atf_emp').value=a.employee_id;
+    if (a.employee) {
+        document.getElementById('atf_emp_info').innerHTML=`<i class="fas fa-user me-1"></i> ${a.employee.name}${a.employee.employee_code ? ` <span class="text-muted">(${a.employee.employee_code})</span>` : ''}`;
+        document.getElementById('atf_emp_info').style.display='';
+    } else {
+        document.getElementById('atf_emp_info').style.display='none';
+    }
+    resetLookupSelect(document.getElementById('atf_emp'), a.employee_id ?? '');
     document.getElementById('atf_date').value=a.attendance_date?a.attendance_date.substring(0,10):'';
     document.getElementById('atf_status').value=a.status;
     document.getElementById('atf_shift').value=a.shift_id||'';
@@ -858,6 +925,16 @@ async function openEditAttModal(id) {
     document.getElementById('atf_out').value=timeOnly(a.check_out_time);
     document.getElementById('atf_late').value=a.late_minutes??0;
     document.getElementById('atf_notes').value=a.notes??'';
+    // Penalty manual-override fields
+    const overridden=!!a.penalty_overridden;
+    document.getElementById('atf_penalty_box').style.display='';
+    document.getElementById('atf_manual').checked=overridden;
+    document.getElementById('atf_penalty_fields').style.display=overridden?'':'none';
+    document.getElementById('atf_late_manual').value=a.late_minutes??0;
+    document.getElementById('atf_late_type').value=a.applied_late_deduction_type??'';
+    document.getElementById('atf_early').value=a.early_exit_minutes??0;
+    document.getElementById('atf_early_type').value=a.applied_early_deduction_type??'';
+    document.getElementById('atf_deduction_amount').value=a.salary_deduction_amount??a.deduction_amount??0;
     updateDeductionPreview();
     updateShiftAlert();
 }
@@ -873,9 +950,25 @@ async function saveAttendance() {
     if(!data.notes) delete data.notes;
     if(!data.shift_id) delete data.shift_id;
     else data.shift_id=parseInt(data.shift_id);
+    // Manual penalty override: send the values verbatim, skipping auto-recalc
+    const manual = document.getElementById('atf_manual').checked && document.getElementById('atf_penalty_box').style.display !== 'none';
+    if (manual) {
+        data.late_minutes = parseInt(document.getElementById('atf_late_manual').value || 0);
+        data.early_exit_minutes = parseInt(document.getElementById('atf_early').value || 0);
+        const lt = document.getElementById('atf_late_type').value;
+        const et = document.getElementById('atf_early_type').value;
+        data.applied_late_deduction_type = lt ? lt : null;
+        data.applied_early_deduction_type = et ? et : null;
+        data.deduction_amount = parseFloat(document.getElementById('atf_deduction_amount').value || 0);
+    }
     const r=await apiFetch(id?`/attendance/${id}`:'/attendance',{method:id?'PUT':'POST',body:JSON.stringify(data)});
     if(r.success){bootstrap.Modal.getInstance(document.getElementById('attAddModal')).hide();showAlert(id?'تم التحديث':'تم الإضافة');loadAttendance();}
     else showAlert(r.message||'فشل الحفظ','danger');
+}
+
+function toggleManualOverride() {
+    const on=document.getElementById('atf_manual').checked;
+    document.getElementById('atf_penalty_fields').style.display=on?'':'none';
 }
 
 function confirmDeleteAtt(id) { attDeleteId=id; new bootstrap.Modal(document.getElementById('attDeleteModal')).show(); }

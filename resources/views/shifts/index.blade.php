@@ -14,6 +14,25 @@
     </div>
 </div>
 
+<!-- GLOBAL EARLY-EXIT SWITCH -->
+<div class="section-card mb-4">
+    <div class="section-body">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="stat-icon mb-0" style="width:46px;height:46px;background:#fce4ec;color:#c62828">
+                <i class="fas fa-door-open"></i>
+            </div>
+            <div class="flex-grow-1">
+                <div class="fw-bold text-primary">خصم الانصراف المبكر</div>
+                <div class="text-muted" style="font-size:.82rem" id="earlyGlobalNote">...</div>
+            </div>
+            <div class="form-check form-switch ms-auto me-3 mb-0" style="min-width:190px">
+                <input type="checkbox" class="form-check-input" id="earlyExitGlobalSwitch" checked onchange="toggleEarlyExitGlobal(this.checked)">
+                <label class="form-check-label fw-semibold" for="earlyExitGlobalSwitch">مفعّل لجميع الموظفين</label>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SHIFTS LIST -->
 <div class="section-card mb-4">
     <div class="section-header">
@@ -722,12 +741,41 @@ async function saveAssignment() {
     } else showAlert(r.message || 'فشل التعيين', 'danger');
 }
 
+async function loadEarlyExitGlobal() {
+    const r = await apiFetch('/settings/attendance');
+    if (!r.success) return;
+    const enabled = r.data?.early_exit_deduction_enabled ?? true;
+    document.getElementById('earlyExitGlobalSwitch').checked = !!enabled;
+    updateEarlyGlobalNote(!!enabled);
+}
+
+function updateEarlyGlobalNote(enabled) {
+    document.getElementById('earlyGlobalNote').textContent =
+        enabled ? 'الخصم على الانصراف المبكر مفعّل للجميع — حسب قواعد الورديات أو استثناءات الموظفين'
+                : 'الخصم على الانصراف المبكر موقوف مؤقتاً لجميع الموظفين (لا يُحتسب)';
+}
+
+async function toggleEarlyExitGlobal(checked) {
+    updateEarlyGlobalNote(checked);
+    const r = await apiFetch('/settings/attendance', {
+        method: 'PUT',
+        body: JSON.stringify({ early_exit_deduction_enabled: checked }),
+    });
+    if (!r.success) {
+        showAlert(r.message || 'فشل الحفظ', 'danger');
+        loadEarlyExitGlobal();
+        return;
+    }
+    showAlert(r.message || (checked ? 'تم تفعيل الخصم' : 'تم إيقاف الخصم'));
+}
+
 // ─── INIT ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('sf_grace').addEventListener('input', updateLateGraceNote);
     loadShifts();
     loadAssignments();
     loadShiftSelect();
+    loadEarlyExitGlobal();
 });
 </script>
 @endpush
