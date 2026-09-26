@@ -8,6 +8,7 @@ use App\Models\AttendanceLog;
 use App\Models\AttendanceRequest;
 use App\Models\Employee;
 use App\Models\WorkLocation;
+use App\Services\AttendanceHoursService;
 use App\Services\AttendancePenaltyService;
 use App\Services\CustomAttendanceService;
 use Carbon\Carbon;
@@ -21,8 +22,10 @@ class AttendanceController
     public function __construct(
         private AttendancePenaltyService $penaltyService,
         private ?CustomAttendanceService $customService = null,
+        private ?AttendanceHoursService $hoursService = null,
     ) {
         $this->customService ??= app(CustomAttendanceService::class);
+        $this->hoursService ??= app(AttendanceHoursService::class);
     }
 
     public function index(Request $request): JsonResponse
@@ -82,6 +85,12 @@ class AttendanceController
             $deduction = $this->penaltyService->calculateRecordDeduction($attendance);
             $attendance->setAttribute('salary_deduction_amount', $deduction['amount']);
             $attendance->setAttribute('salary_deduction_label', $deduction['label']);
+
+            // Expose a consistent hours block so the list never has to guess
+            // (and never falls back to a hardcoded value).
+            $attendance->setAttribute('overtime_enabled', $this->hoursService->overtimeEnabled($attendance->employee));
+            $attendance->setAttribute('worked_hours_display', $attendance->workedHours());
+            $attendance->setAttribute('overtime_hours_display', $attendance->overtimeHours());
         });
 
         return response()->json(['success' => true, 'data' => $records]);
@@ -125,12 +134,24 @@ class AttendanceController
                 return response()->json(['success' => true, 'message' => 'تم حفظ سجل الغياب', 'data' => $attendance->fresh('logs')], 201);
             }
 
+            // Manual entry creates ONE session with its own punch pair. The
+            // duration is measured per session (never against another session's
+            // clock) and a missing check-out means an open session = 0 minutes.
+            $sessionMinutes = !empty($validated['check_in_time'])
+                ? $this->hoursService->minutesBetween(
+                    $attendanceDate,
+                    $validated['check_in_time'],
+                    $validated['check_out_time'] ?? null
+                )
+                : 0;
+
             AttendanceLog::create([
                 'employee_id' => $employee->id,
                 'attendance_id' => $attendance->id,
                 'log_date' => $attendanceDate,
                 'check_in_time' => $validated['check_in_time'],
                 'check_out_time' => $validated['check_out_time'] ?? null,
+                'duration_minutes' => $sessionMinutes,
                 'source' => 'admin',
                 'notes' => $validated['notes'] ?? null,
             ]);
@@ -165,6 +186,11 @@ class AttendanceController
                 'working_hours' => 0,
                 'early_exit_minutes' => 0,
                 'actual_worked_hours' => 0,
+                'total_worked_minutes' => 0,
+                'total_worked_hours' => 0,
+                'hours_status' => null,
+                'overtime_minutes' => 0,
+                'overtime_hours' => 0,
                 'applied_late_deduction_type' => 'full_day',
                 'deduction_amount' => 0,
                 'penalty_overridden' => false,
@@ -175,12 +201,7 @@ class AttendanceController
         } else {
             $record = $this->penaltyService->processAttendance($record);
 
-            if ($record->check_in_time && $record->check_out_time) {
-                $checkIn = Carbon::parse($attendanceDate . ' ' . $record->check_in_time);
-                $checkOut = Carbon::parse($attendanceDate . ' ' . $record->check_out_time);
-                $record->working_hours = max(0, (int) $checkIn->diffInHours($checkOut));
-                $record->save();
-            }
+            $this->syncStandardHours($record, $attendanceDate);
 
             // Auto-set status based on late minutes
             $lateThreshold = (int) Config::get('hr.working_hours.late_threshold_minutes', 15);
@@ -193,15 +214,58 @@ class AttendanceController
             'success' => true,
             'message' => 'تم حفظ سجل الحضور وسيتم احتساب الخصم تلقائياً في المرتب',
             'data' => $record->load(['employee', 'shift']),
-            'penalty' => [
-                'late_minutes' => $record->late_minutes,
-                'early_exit_minutes' => $record->early_exit_minutes,
-                'actual_worked_hours' => $record->actual_worked_hours,
-                'applied_late_deduction_type' => $record->applied_late_deduction_type,
-                'applied_early_deduction_type' => $record->applied_early_deduction_type,
-                'deduction_amount' => $record->deduction_amount,
-            ],
+            'penalty' => $this->penaltyPayload($record, $record->employee),
         ], 201);
+    }
+
+    /**
+     * Recompute the shift-based attendance hours from the record's OWN
+     * check-in/check-out pair.
+     *
+     * Previously this used diffInHours(), which truncated to whole hours and
+     * produced 0 for anything under an hour (and negative values for overnight
+     * shifts). It now measures minutes through Carbon and returns 0.00 whenever
+     * either punch time is missing - there is no hardcoded fallback.
+     */
+    private function syncStandardHours(Attendance $record, ?string $date = null): void
+    {
+        $date = $date ?: ($record->attendance_date?->toDateString());
+
+        $workedMinutes = $this->hoursService->minutesBetween(
+            $date,
+            $record->check_in_time,
+            $record->check_out_time
+        );
+
+        $record->working_hours = (int) floor($workedMinutes / 60);
+        $record->actual_worked_hours = round($workedMinutes / 60, 2);
+        $record->total_worked_minutes = $workedMinutes;
+        $record->total_worked_hours = round($workedMinutes / 60, 2);
+        $record->save();
+    }
+
+    /**
+     * Uniform hours/overtime block shared by every attendance endpoint.
+     */
+    private function penaltyPayload(Attendance $record, ?Employee $employee = null): array
+    {
+        $employee = $employee ?? $record->employee;
+
+        return [
+            'late_minutes'            => $record->late_minutes,
+            'early_exit_minutes'      => $record->early_exit_minutes,
+            'working_hours'           => (int) ($record->working_hours ?? 0),
+            'actual_worked_hours'     => (float) ($record->actual_worked_hours ?? 0),
+            'total_worked_hours'      => (float) ($record->total_worked_hours ?? $record->actual_worked_hours ?? 0),
+            'required_hours'          => (float) ($record->required_hours ?? 0),
+            'hours_status'            => $record->hours_status,
+            'overtime_enabled'        => $this->hoursService->overtimeEnabled($employee),
+            'overtime_minutes'        => (int) ($record->overtime_minutes ?? 0),
+            'overtime_hours'          => (float) ($record->overtime_hours ?? 0),
+            'applied_late_deduction_type'   => $record->applied_late_deduction_type,
+            'applied_early_deduction_type' => $record->applied_early_deduction_type,
+            'deduction_amount'        => $record->deduction_amount,
+        ];
     }
 
     public function show($id): JsonResponse
@@ -253,6 +317,13 @@ class AttendanceController
         } elseif ($record->status === 'absent') {
             $record->update([
                 'deduction_amount' => 0,
+                'total_worked_minutes' => 0,
+                'total_worked_hours' => 0,
+                'actual_worked_hours' => 0,
+                'working_hours' => 0,
+                'hours_status' => null,
+                'overtime_minutes' => 0,
+                'overtime_hours' => 0,
                 'penalty_overridden' => false,
             ]);
         } elseif ($record->employee?->isCustomAttendance()) {
@@ -261,13 +332,7 @@ class AttendanceController
         } else {
             $record = $this->penaltyService->processAttendance($record);
 
-            if ($record->check_in_time && $record->check_out_time) {
-                $date = Carbon::parse($attendanceDate);
-                $ci = Carbon::parse($date->toDateString() . ' ' . $record->check_in_time);
-                $co = Carbon::parse($date->toDateString() . ' ' . $record->check_out_time);
-                $record->working_hours = max(0, (int) $ci->diffInHours($co));
-                $record->save();
-            }
+            $this->syncStandardHours($record, $attendanceDate);
 
             $lateThreshold = (int) Config::get('hr.working_hours.late_threshold_minutes', 15);
             if ($record->status === 'present' && $record->late_minutes > $lateThreshold) {
@@ -279,14 +344,7 @@ class AttendanceController
             'success' => true,
             'message' => 'تم تحديث سجل الحضور',
             'data' => $record->load(['employee', 'shift']),
-            'penalty' => [
-                'late_minutes' => $record->late_minutes,
-                'early_exit_minutes' => $record->early_exit_minutes,
-                'actual_worked_hours' => $record->actual_worked_hours,
-                'applied_late_deduction_type' => $record->applied_late_deduction_type,
-                'applied_early_deduction_type' => $record->applied_early_deduction_type,
-                'deduction_amount' => $record->deduction_amount,
-            ],
+            'penalty' => $this->penaltyPayload($record, $record->employee),
         ]);
     }
 
@@ -305,10 +363,23 @@ class AttendanceController
      */
     private function applyPenaltyOverride(Attendance $record, array $fields): Attendance
     {
+        $workedMinutes = $this->hoursService->minutesBetween(
+            $record->attendance_date?->toDateString(),
+            $record->check_in_time,
+            $record->check_out_time
+        );
+
         $payload = [
             'late_minutes' => (int) ($record->late_minutes ?? 0),
             'early_exit_minutes' => (int) ($record->early_exit_minutes ?? 0),
-            'actual_worked_hours' => $record->actual_worked_hours ?? 0,
+            'actual_worked_hours' => round($workedMinutes / 60, 2),
+            'working_hours' => (int) floor($workedMinutes / 60),
+            'total_worked_minutes' => $workedMinutes,
+            'total_worked_hours' => round($workedMinutes / 60, 2),
+            // An override may only waive/adjust penalties; it can never grant
+            // hours or overtime, so both are re-derived from the punch pair.
+            'overtime_minutes' => 0,
+            'overtime_hours' => 0.0,
             'applied_late_deduction_type' => $record->applied_late_deduction_type,
             'applied_early_deduction_type' => $record->applied_early_deduction_type,
             'deduction_amount' => (float) $fields['deduction_amount'],
@@ -613,9 +684,11 @@ class AttendanceController
             return response()->json(['success' => false, 'message' => 'تم تسجيل الانصراف مسبقاً'], 422);
         }
 
-        $checkIn = Carbon::parse($today . ' ' . $record->check_in_time);
+        // The open record may belong to a previous day (overnight shift), so the
+        // hours maths must be anchored to the RECORD's date, not to today.
+        $recordDate = $record->attendance_date?->toDateString() ?? $today;
+
         $checkOut = $customNow ?? now();
-        $date = Carbon::parse($today);
 
         $photoPath = null;
         if ($request->hasFile('photo')) {
@@ -630,22 +703,19 @@ class AttendanceController
         ]);
 
         $record = $this->penaltyService->processAttendance($record);
-
-        $workingHours = $record->actual_worked_hours ?? 0;
+        $this->syncStandardHours($record, $recordDate);
 
         return response()->json([
             'success'       => true,
             'message'       => 'تم تسجيل الانصراف بنجاح',
             'data'          => $record,
-            'working_hours' => $workingHours,
-            'penalty'       => [
-                'late_minutes' => $record->late_minutes,
-                'early_exit_minutes' => $record->early_exit_minutes,
-                'actual_worked_hours' => $record->actual_worked_hours,
-                'applied_late_deduction_type' => $record->applied_late_deduction_type,
-                'applied_early_deduction_type' => $record->applied_early_deduction_type,
-                'deduction_amount' => $record->deduction_amount,
+            'working_hours' => (float) ($record->total_worked_hours ?? 0),
+            'overtime'      => [
+                'enabled' => $this->hoursService->overtimeEnabled($employee),
+                'minutes' => (int) ($record->overtime_minutes ?? 0),
+                'hours'   => (float) ($record->overtime_hours ?? 0),
             ],
+            'penalty'       => $this->penaltyPayload($record, $employee),
         ]);
     }
 
@@ -679,27 +749,43 @@ class AttendanceController
      */
     public function daySessions($id): JsonResponse
     {
-        $attendance = Attendance::with(['logs', 'employee', 'shift'])->findOrFail($id);
+        $attendance = Attendance::with(['employee', 'shift'])->findOrFail($id);
+
+        // Strictly this day's sessions: whereDate('log_date', attendance_date).
+        $logs = $this->hoursService->dayLogs($attendance);
+        // Mode-aware AND status-aware: a shift-based record without logs reports
+        // its own punch pair, and an absent/leave day reports 0.00 hours even if
+        // stale session rows are attached.
+        $totals = $this->hoursService->effectiveTotals($attendance, $attendance->employee);
+        $overtime = $this->hoursService->resolveOvertime($attendance, $attendance->employee);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'attendance' => $attendance,
-                'sessions' => $attendance->logs->map(fn (AttendanceLog $log) => [
+                'date' => $totals['date'],
+                'sessions' => $logs->map(fn (AttendanceLog $log) => [
                     'id' => $log->id,
+                    'log_date' => $log->log_date?->toDateString(),
                     'check_in_time' => $log->check_in_time ? substr($log->check_in_time, 0, 5) : null,
                     'check_out_time' => $log->check_out_time ? substr($log->check_out_time, 0, 5) : null,
-                    'duration_minutes' => $log->duration_minutes,
+                    'duration_minutes' => $this->hoursService->sessionMinutes($log),
                     'is_open' => $log->isOpen(),
                     'source' => $log->source,
                     'notes' => $log->notes,
                 ])->values(),
                 'totals' => [
-                    'total_worked_minutes' => $attendance->total_worked_minutes,
-                    'total_worked_hours' => $attendance->total_worked_hours,
-                    'required_hours' => $attendance->required_hours,
-                    'hours_status' => $attendance->hours_status,
-                    'deduction_amount' => $attendance->deduction_amount,
+                    'total_worked_minutes'     => $totals['total_minutes'],
+                    'total_worked_hours'       => $totals['total_hours'],
+                    'required_hours'           => (float) ($attendance->required_hours ?? 0),
+                    'sessions_count'           => $totals['sessions_count'],
+                    'completed_sessions_count' => $totals['completed_sessions_count'],
+                    'open_sessions_count'      => $totals['open_sessions_count'],
+                    'hours_status'             => $attendance->hours_status,
+                    'overtime_enabled'         => $overtime['enabled'],
+                    'overtime_minutes'         => $overtime['minutes'],
+                    'overtime_hours'           => $overtime['hours'],
+                    'deduction_amount'         => (float) ($attendance->deduction_amount ?? 0),
                 ],
             ],
         ]);
@@ -713,20 +799,17 @@ class AttendanceController
 
         $attendance = Attendance::findOrFail($id);
         $validated = $this->validateSessionPayload($request);
+        $date = $attendance->attendance_date->toDateString();
 
-        $duration = null;
-        if (!empty($validated['check_out_time'])) {
-            [$in, $out] = $this->customService->resolveSessionRange(
-                $validated['check_in_time'],
-                $validated['check_out_time']
-            );
-            $duration = max(0, (int) $in->diffInMinutes($out));
-        }
+        // Per-session duration from this session's own punch pair.
+        $duration = empty($validated['check_out_time'])
+            ? 0
+            : $this->hoursService->minutesBetween($date, $validated['check_in_time'], $validated['check_out_time']);
 
         AttendanceLog::create([
             'employee_id' => $attendance->employee_id,
             'attendance_id' => $attendance->id,
-            'log_date' => $attendance->attendance_date->toDateString(),
+            'log_date' => $date,
             'check_in_time' => $validated['check_in_time'],
             'check_out_time' => $validated['check_out_time'] ?? null,
             'duration_minutes' => $duration,
@@ -772,13 +855,12 @@ class AttendanceController
             );
         }
 
-        // Recompute duration when both ends exist; clear it for re-opened sessions.
-        if (!$log->isOpen()) {
-            $duration = max(0, (int) $log->checkInAt()->diffInMinutes($log->checkOutAt()));
-            $log->update(['duration_minutes' => $duration]);
-        } else {
-            $log->update(['duration_minutes' => 0]);
-        }
+        // Recompute duration from this session's own pair; clear it when the
+        // session is re-opened (no check-out = 0 counted minutes).
+        $log->refresh();
+        $log->update([
+            'duration_minutes' => $log->isOpen() ? 0 : $this->hoursService->sessionMinutes($log),
+        ]);
 
         $updated = $this->customService->recalculateDay($log->attendance_id);
 
@@ -889,6 +971,13 @@ class AttendanceController
     {
         $record = Attendance::with(['employee', 'shift.lateRules', 'shift.earlyExitRules'])->findOrFail($id);
 
+        $date = $record->attendance_date instanceof Carbon
+            ? $record->attendance_date->toDateString()
+            : (string) $record->attendance_date;
+
+        $totals = $this->hoursService->effectiveTotals($record, $record->employee);
+        $overtime = $this->hoursService->resolveOvertime($record, $record->employee);
+
         $details = [
             'shift_name' => $record->shift?->name,
             'shift_start' => $record->shift?->start_time,
@@ -905,17 +994,25 @@ class AttendanceController
                 'minutes' => $record->early_exit_minutes,
                 'deduction_type' => $record->applied_early_deduction_type,
             ],
-            'actual_worked_hours' => $record->actual_worked_hours,
+            // Always recomputed from the record's own punches/sessions so the
+            // details can never display a stale/phantom hours value.
+            'total_worked_minutes' => $totals['total_minutes'],
+            'total_worked_hours'   => $totals['total_hours'],
+            'actual_worked_hours'  => $totals['total_hours'],
+            'required_hours'       => (float) ($record->required_hours ?? 0),
+            'hours_status'         => $record->hours_status,
+            'overtime' => [
+                'enabled' => $overtime['enabled'],
+                'minutes' => $overtime['minutes'],
+                'hours'   => $overtime['hours'],
+            ],
             'total_deduction_amount' => $record->deduction_amount,
             'payroll_pushed' => $record->payroll_pushed,
         ];
 
         if ($record->shift && $record->check_in_time) {
-            $date = $record->attendance_date instanceof Carbon
-                ? $record->attendance_date
-                : Carbon::parse($record->attendance_date);
-            $checkIn = Carbon::parse($date->toDateString() . ' ' . $record->check_in_time);
-            $scheduledStart = Carbon::parse($date->toDateString() . ' ' . $record->shift->start_time);
+            $scheduledStart = Carbon::parse($date . ' ' . $record->shift->start_time);
+            $checkIn = Carbon::parse($date . ' ' . $record->check_in_time);
             $actualDelay = max(0, (int) $scheduledStart->diffInMinutes($checkIn, false));
             $effectiveDelay = max(0, $actualDelay - $record->shift->grace_period_minutes);
 
@@ -935,10 +1032,11 @@ class AttendanceController
                 'data'       => [],
                 'statistics' => [
                     'present'            => 0,
-                    'absent'             => 0,
+                    'absent'            => 0,
                     'late'               => 0,
                     'on_leave'           => 0,
                     'total_hours'        => 0,
+                    'total_overtime_hours' => 0,
                     'total_late_minutes' => 0,
                     'total_early_exit_minutes' => 0,
                     'total_deduction_amount' => 0,
@@ -962,12 +1060,14 @@ class AttendanceController
 
         $grouped = $records->map(function ($dayRecords) {
             $first = $dayRecords->first();
+            $date = $first->attendance_date instanceof Carbon
+                ? $first->attendance_date->toDateString()
+                : (string) $first->attendance_date;
+
             return [
                 'id' => $first->id,
                 'employee_id' => $first->employee_id,
-                'attendance_date' => $first->attendance_date instanceof Carbon
-                    ? $first->attendance_date->toDateString()
-                    : $first->attendance_date,
+                'attendance_date' => $date,
                 'status' => $first->status,
                 'check_in_time' => $first->check_in_time,
                 'check_out_time' => $dayRecords->last()?->check_out_time,
@@ -975,17 +1075,27 @@ class AttendanceController
                 'shift' => $first->shift,
                 'late_minutes' => $dayRecords->sum('late_minutes'),
                 'early_exit_minutes' => $dayRecords->sum('early_exit_minutes'),
-                'actual_worked_hours' => round($dayRecords->sum('actual_worked_hours'), 2),
+                // Minutes are the single source of truth for the day; hours are
+                // derived from them (never summed from stored rounded values).
+                'total_worked_minutes' => $dayRecords->sum('total_worked_minutes'),
+                'total_worked_hours' => round($dayRecords->sum('total_worked_minutes') / 60, 2),
+                'actual_worked_hours' => round($dayRecords->sum('total_worked_minutes') / 60, 2),
+                'working_hours' => (int) floor($dayRecords->sum('total_worked_minutes') / 60),
+                'required_hours' => round((float) ($first->required_hours ?? 0), 2),
+                'hours_status' => $first->hours_status,
+                'overtime_minutes' => $dayRecords->sum('overtime_minutes'),
+                'overtime_hours' => round($dayRecords->sum('overtime_minutes') / 60, 2),
                 'deduction_amount' => round($dayRecords->sum('deduction_amount'), 2),
             ];
         })->values();
 
         $stats = [
             'present'            => $grouped->where('status', 'present')->count(),
-            'absent'             => $grouped->where('status', 'absent')->count(),
+            'absent'            => $grouped->where('status', 'absent')->count(),
             'late'               => $grouped->where('status', 'late')->count(),
             'on_leave'           => $grouped->where('status', 'on_leave')->count(),
-            'total_hours'        => $grouped->sum('actual_worked_hours'),
+            'total_hours'        => round($grouped->sum('total_worked_hours'), 2),
+            'total_overtime_hours' => round($grouped->sum('overtime_hours'), 2),
             'total_late_minutes' => $grouped->sum('late_minutes'),
             'total_early_exit_minutes' => $grouped->sum('early_exit_minutes'),
             'total_deduction_amount'   => $grouped->sum('deduction_amount'),
@@ -1017,7 +1127,7 @@ class AttendanceController
 
         $employeeShift = $employee->currentShift();
 
-        $records = Attendance::with('shift', 'logs')
+        $records = Attendance::with('shift')
             ->where('employee_id', $employee->id)
             ->where('attendance_date', '>=', $start->toDateString())
             ->where('attendance_date', '<=', $end->toDateString())
@@ -1035,11 +1145,18 @@ class AttendanceController
 
             if ($dayRecords && $dayRecords->count() > 0) {
                 $first = $dayRecords->first();
-                $totalHours = $dayRecords->sum('actual_worked_hours');
                 $totalLate = $dayRecords->sum('late_minutes');
                 $totalEarly = $dayRecords->sum('early_exit_minutes');
                 $totalDeduction = $dayRecords->sum('deduction_amount');
-                $dayLogs = $dayRecords->flatMap->logs->values();
+                $totalMinutes = $dayRecords->sum('total_worked_minutes');
+                $totalOvertimeMinutes = $dayRecords->sum('overtime_minutes');
+
+                // Sessions of THIS day only (whereDate('log_date', $key)) so a
+                // neighbouring day's sessions can never inflate the totals.
+                $dayLogs = $dayRecords
+                    ->flatMap(fn (Attendance $r) => $this->hoursService->dayLogs($r, $key))
+                    ->values();
+
                 $hasOpen = $dayLogs->contains(fn ($l) => $l->check_in_time !== null && $l->isOpen())
                     || $dayRecords->contains(fn ($r) => !$r->check_out_time && $r->check_in_time);
                 $activeShift = $first?->shift ?? $employeeShift;
@@ -1048,14 +1165,19 @@ class AttendanceController
                     'date'              => $key,
                     'day_name'          => $day->isoFormat('dddd'),
                     'status'            => $hasOpen ? 'present' : ($first->status ?? 'absent'),
-                    'check_in_time'     => $dayLogs->first()?->check_in_time ?? $first?->check_in_time,
-                    'check_out_time'    => $dayLogs->last()?->check_out_time ?? $dayRecords->last()?->check_out_time,
+                    'check_in_time'     => $dayLogs->whereNotNull('check_in_time')->min('check_in_time') ?? $first?->check_in_time,
+                    'check_out_time'    => $dayLogs->whereNotNull('check_out_time')->max('check_out_time') ?? $dayRecords->last()?->check_out_time,
                     'shift_name'        => $dayRecords->pluck('shift')->filter()->pluck('name')->implode(', ') ?: $activeShift?->name,
                     'shift_start'       => $activeShift?->start_time,
                     'shift_end'         => $activeShift?->end_time,
                     'late_minutes'      => $totalLate,
                     'early_exit_minutes'=> $totalEarly,
-                    'actual_worked_hours'=> round($totalHours, 2),
+                    'total_worked_minutes' => $totalMinutes,
+                    'actual_worked_hours'=> round($totalMinutes / 60, 2),
+                    'required_hours'    => round((float) ($first->required_hours ?? 0), 2),
+                    'hours_status'      => $first->hours_status,
+                    'overtime_minutes'  => $totalOvertimeMinutes,
+                    'overtime_hours'    => round($totalOvertimeMinutes / 60, 2),
                     'deduction_amount'  => round($totalDeduction, 2),
                     'sessions_count'    => $dayLogs->count() ?: $dayRecords->count(),
                 ];
@@ -1071,7 +1193,12 @@ class AttendanceController
                     'shift_end'         => $employeeShift?->end_time,
                     'late_minutes'      => 0,
                     'early_exit_minutes'=> 0,
+                    'total_worked_minutes' => 0,
                     'actual_worked_hours'=> 0.0,
+                    'required_hours'    => 0.0,
+                    'hours_status'      => null,
+                    'overtime_minutes'  => 0,
+                    'overtime_hours'    => 0.0,
                     'deduction_amount'  => 0.0,
                     'sessions_count'    => 0,
                 ];
@@ -1094,6 +1221,7 @@ class AttendanceController
             'late'                  => $late,
             'on_leave'              => $onLeave,
             'total_hours'           => round($daysTotal->sum('actual_worked_hours'), 2),
+            'total_overtime_hours'  => round($daysTotal->sum('overtime_hours'), 2),
             'total_late_minutes'    => $daysTotal->sum('late_minutes'),
             'total_early_exit_minutes' => $daysTotal->sum('early_exit_minutes'),
             'total_deduction_amount'   => round($daysTotal->sum('deduction_amount'), 2),
@@ -1312,7 +1440,9 @@ class AttendanceController
             'absent'            => $records->where('status', 'absent')->count(),
             'late'              => $records->where('status', 'late')->count(),
             'on_leave'          => $records->where('status', 'on_leave')->count(),
-            'total_hours'       => $records->sum('actual_worked_hours'),
+            'overtime_days'     => $records->where('hours_status', Attendance::HOURS_OVERTIME)->count(),
+            'total_hours'       => round($records->sum('total_worked_minutes') / 60, 2),
+            'total_overtime_hours' => round($records->sum('overtime_minutes') / 60, 2),
             'total_late_minutes'=> $records->sum('late_minutes'),
             'total_early_exit_minutes' => $records->sum('early_exit_minutes'),
             'total_deduction_amount'   => $records->sum('deduction_amount'),

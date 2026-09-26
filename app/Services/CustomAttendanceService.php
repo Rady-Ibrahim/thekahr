@@ -14,6 +14,10 @@ class CustomAttendanceService
     /** Note stamped on auto-closed (forgotten) sessions. */
     public const AUTO_CLOSED_NOTE = 'إغلاق تلقائي بعد 20 ساعة';
 
+    public function __construct(private AttendanceHoursService $hours)
+    {
+    }
+
     /**
      * Start a new work session (check-in) for a custom-attendance employee.
      * Multiple completed sessions per day are allowed; only one open session at a time.
@@ -58,6 +62,7 @@ class CustomAttendanceService
                 'check_in_latitude' => $data['latitude'] ?? null,
                 'check_in_longitude' => $data['longitude'] ?? null,
                 'check_in_photo' => $checkInPhoto,
+                'duration_minutes' => 0,
                 'source' => $source,
             ]);
 
@@ -67,7 +72,7 @@ class CustomAttendanceService
 
             return [
                 'success' => true,
-                'message' => 'تم تسجيل الحضور بنجاح (جلسة رقم ' . ($attendance->logs()->count()) . ')',
+                'message' => 'تم تسجيل الحضور بنجاح (جلسة رقم ' . $attendance->logs()->count() . ')',
                 'session' => $log,
                 'attendance' => $attendance->fresh('logs'),
             ];
@@ -105,12 +110,14 @@ class CustomAttendanceService
                 'check_out_photo' => $checkOutPhoto,
             ]);
 
-            // Anchor the duration to the session's OWN log_date so overnight sessions
-            // (and simulated check-outs) never inflate it by leaping across dates: a
-            // 17:07→18:15 session must stay 68 minutes regardless of the wall clock.
+            // Per-session duration, anchored to the session's OWN log_date and to
+            // its own check-in/check-out pair via diffInMinutes. A 17:07→18:15
+            // session stays 68 minutes regardless of the wall clock, an overnight
+            // session keeps its true length, and a session with no real check-out
+            // stays at 0 instead of falling back to a default.
             $durationMinutes = $log->isOpen()
                 ? 0
-                : max(0, (int) $log->checkInAt()->diffInMinutes($log->checkOutAt()));
+                : $this->hours->sessionMinutes($log->fresh());
 
             $log->update(['duration_minutes' => $durationMinutes]);
 
@@ -120,7 +127,7 @@ class CustomAttendanceService
                 'success' => true,
                 'message' => 'تم تسجيل الانصراف بنجاح',
                 'session_duration_minutes' => $durationMinutes,
-                'summary' => $this->buildSummary($attendance),
+                'summary' => $attendance ? $this->buildSummary($attendance) : null,
             ];
         });
     }
@@ -140,12 +147,14 @@ class CustomAttendanceService
      *
      * @return int number of sessions closed
      */
-    public function autoCloseStaleSessions(?int $employeeId = null): int
+    public function autoCloseStaleSessions(?int $employeeId = null, ?Carbon $now = null): int
     {
         $hours = (float) config('hr.working_hours.auto_close_after_hours', 20);
-        $cutoff = now()->subHours($hours);
+        $now ??= now();
+        $cutoff = $now->copy()->subHours($hours);
 
         $query = AttendanceLog::whereNull('check_out_time')
+            ->whereNotNull('check_in_time')
             ->where(function ($q) use ($cutoff) {
                 $q->where('log_date', '<', $cutoff->toDateString())
                     ->orWhere(function ($q) use ($cutoff) {
@@ -164,13 +173,13 @@ class CustomAttendanceService
             $checkInAt = $log->checkInAt();
             $autoCheckOut = $checkInAt->copy()->addHours($hours);
 
-            $durationMinutes = max(0, (int) $checkInAt->diffInMinutes($autoCheckOut));
-
             $log->update([
                 'check_out_time' => $autoCheckOut->toTimeString(),
-                'duration_minutes' => $durationMinutes,
                 'notes' => self::AUTO_CLOSED_NOTE,
             ]);
+
+            // Duration of THIS session only, then re-aggregate its own day.
+            $log->update(['duration_minutes' => $this->hours->sessionMinutes($log->fresh())]);
 
             $this->recalculateDay($log->attendance_id);
             $closed++;
@@ -186,7 +195,7 @@ class CustomAttendanceService
     public function manualSession(Employee $employee, array $data): array
     {
         return DB::transaction(function () use ($employee, $data) {
-            $date = $data['date'] ?? today()->toDateString();
+            $date = Carbon::parse($data['date'] ?? today()->toDateString())->toDateString();
 
             if ($date > today()->toDateString()) {
                 return ['success' => false, 'message' => 'لا يمكن تسجيل جلسة بتاريخ مستقبلي'];
@@ -196,8 +205,12 @@ class CustomAttendanceService
                 return ['success' => false, 'message' => 'وقت الحضور والانصراف متطابقان'];
             }
 
-            [$in, $out] = $this->resolveSessionRange($data['check_in_time'], $data['check_out_time']);
-            $durationMinutes = max(0, (int) $in->diffInMinutes($out));
+            // Duration of this session only, from its own check-in/check-out pair.
+            $durationMinutes = $this->hours->minutesBetween($date, $data['check_in_time'], $data['check_out_time']);
+
+            if ($durationMinutes <= 0) {
+                return ['success' => false, 'message' => 'أوقات الحضور والانصراف غير صحيحة'];
+            }
 
             $attendance = Attendance::firstOrCreate(
                 ['employee_id' => $employee->id, 'attendance_date' => $date],
@@ -283,12 +296,15 @@ class CustomAttendanceService
 
     /**
      * Compute duration for admin-entered times; an end time earlier than the
-     * start time is treated as crossing midnight.
+     * start time is treated as crossing midnight. Delegates the minute maths to
+     * AttendanceHoursService so there is a single implementation.
      */
-    public function resolveSessionRange(string $checkIn, string $checkOut): array
+    public function resolveSessionRange(string $checkIn, string $checkOut, ?string $date = null): array
     {
-        $in = Carbon::createFromFormat('H:i', $checkIn);
-        $out = Carbon::createFromFormat('H:i', $checkOut);
+        $date = $date ?: today()->toDateString();
+
+        $in = Carbon::createFromFormat('H:i', substr($checkIn, 0, 5))->setDateFrom(Carbon::parse($date));
+        $out = Carbon::createFromFormat('H:i', substr($checkOut, 0, 5))->setDateFrom(Carbon::parse($date));
 
         if ($out->lessThan($in)) {
             $out->addDay();
@@ -298,7 +314,22 @@ class CustomAttendanceService
     }
 
     /**
-     * Aggregate all sessions of the day: totals, hours status flag and shortfall deduction.
+     * Duration in minutes of a single session, from its own punch pair.
+     */
+    public function sessionMinutes(AttendanceLog $log): int
+    {
+        return $this->hours->sessionMinutes($log);
+    }
+
+    /**
+     * Aggregate ONE day of an attendance record: per-session totals, the unified
+     * hours status, the shortfall deduction and the overtime figures.
+     *
+     * Everything is delegated to AttendanceHoursService, which guarantees:
+     *  - sessions are timed individually (never re-timed as a block),
+     *  - only sessions of THIS calendar day are summed (whereDate('log_date')),
+     *  - a day with no real check-in/check-out yields 0.00 hours, never a
+     *    hardcoded fallback such as the 20-hour auto-close window.
      */
     public function recalculateDay(?int $attendanceId): ?Attendance
     {
@@ -309,29 +340,37 @@ class CustomAttendanceService
 
         $employee = $attendance->employee;
 
-        $totalMinutes = (int) $attendance->logs->sum('duration_minutes');
-        $totalHours = round($totalMinutes / 60, 2);
+        $date = $this->hours->resolveDate($attendance);
 
-        // Per-day override (set via manual entry) takes precedence over the employee default.
-        $requiredHours = $employee?->isCustomAttendance()
-            ? (float) ($attendance->required_hours ?: $employee->requiredDailyHours())
-            : (float) config('hr.working_hours.daily_hours', 8);
-
-        [$hoursStatus, $shortfallDeduction] = $this->resolveHoursStatus(
-            $totalMinutes,
-            $requiredHours,
-            $employee
+        // Unified status + deduction + overtime, computed from a per-session
+        // sum that is strictly scoped to the record's own date.
+        // The 4th element is the AUTHORITATIVE total for the day: it is already
+        // zeroed for absent / on-leave days and for days with no completed
+        // session, so a leftover session can never manufacture hours.
+        [$hoursStatus, $shortfallDeduction, $overtimeMinutes, $effective] = $this->hours->resolveDayStatus(
+            $attendance,
+            $employee,
+            $date
         );
+
+        $totals = [
+            'total_minutes' => $effective['total_minutes'],
+            'total_hours'   => $effective['total_hours'],
+        ];
+
+        $requiredHours = $this->hours->requiredHoursFor($attendance, $employee);
 
         // Keep legacy columns in sync so existing reports/salary flows stay correct.
         $attendance->update([
-            'total_worked_minutes' => $totalMinutes,
-            'total_worked_hours' => $totalHours,
-            'required_hours' => $requiredHours,
-            'hours_status' => $hoursStatus,
-            'actual_worked_hours' => $totalHours,
-            'working_hours' => (int) floor($totalMinutes / 60),
-            'deduction_amount' => $hoursStatus === Attendance::HOURS_SHORTFALL ? $shortfallDeduction : 0.0,
+            'total_worked_minutes' => $totals['total_minutes'],
+            'total_worked_hours'   => $totals['total_hours'],
+            'required_hours'       => $requiredHours,
+            'hours_status'         => $hoursStatus,
+            'overtime_minutes'     => $overtimeMinutes,
+            'overtime_hours'       => round($overtimeMinutes / 60, 2),
+            'actual_worked_hours'  => $totals['total_hours'],
+            'working_hours'        => (int) floor($totals['total_minutes'] / 60),
+            'deduction_amount'     => $hoursStatus === Attendance::HOURS_SHORTFALL ? $shortfallDeduction : 0.0,
         ]);
 
         // Mirror the day's first check-in and latest closed check-out onto the main
@@ -343,38 +382,24 @@ class CustomAttendanceService
 
     /**
      * Persist the first session's check-in and the latest CLOSED session's
-     * check-out onto the attendances row for the dashboard to read directly.
+     * check-out of THIS DAY onto the attendances row so the dashboard can read
+     * them directly. Date-scoped so a neighbouring day's session can never
+     * stretch the displayed range.
      */
     private function syncDashboardTimes(int $attendanceId): void
     {
+        $attendance = Attendance::find($attendanceId);
+
+        if (!$attendance) {
+            return;
+        }
+
+        $logs = $this->hours->dayLogs($attendance);
+
         Attendance::whereKey($attendanceId)->update([
-            'check_in_time'  => AttendanceLog::where('attendance_id', $attendanceId)->min('check_in_time'),
-            'check_out_time' => AttendanceLog::where('attendance_id', $attendanceId)
-                ->whereNotNull('check_out_time')
-                ->max('check_out_time'),
+            'check_in_time'  => $logs->whereNotNull('check_in_time')->min('check_in_time'),
+            'check_out_time' => $logs->whereNotNull('check_out_time')->max('check_out_time'),
         ]);
-    }
-
-    /**
-     * @return array{0:string,1:float} [hours_status, shortfall_deduction_amount]
-     */
-    private function resolveHoursStatus(int $totalMinutes, float $requiredHours, ?Employee $employee): array
-    {
-        $requiredMinutes = (int) round($requiredHours * 60);
-
-        if ($requiredMinutes > 0 && $totalMinutes < $requiredMinutes) {
-            $hourlyRate = $employee ? $employee->hourlyRate() : 0.0;
-            $shortfallMinutes = $requiredMinutes - $totalMinutes;
-
-            // Proportional deduction based on base salary & hourly rate.
-            return [Attendance::HOURS_SHORTFALL, round(($shortfallMinutes / 60) * $hourlyRate, 2)];
-        }
-
-        if ($requiredMinutes > 0 && $totalMinutes > $requiredMinutes + 30) {
-            return [Attendance::HOURS_OVERTIME, 0.0];
-        }
-
-        return [Attendance::HOURS_FULFILLED, 0.0];
     }
 
     /**
@@ -391,51 +416,56 @@ class CustomAttendanceService
 
         $openSession = $this->openSession($employee);
 
+        $sessions = $attendance
+            ? $this->hours->dayLogs($attendance, $today)
+                ->map(fn (AttendanceLog $log) => $this->formatSession($log))
+                ->values()
+                ->all()
+            : [];
+
         return [
             'is_custom_attendance' => true,
             'employee_name'        => $employee->name,
             'daily_required_hours' => (float) $employee->requiredDailyHours(),
-            'attendance_id' => $attendance?->id,
-            'sessions' => $attendance?->logs->map(fn (AttendanceLog $log) => $this->formatSession($log))->values() ?? [],
-            'open_session' => $openSession ? $this->formatSession($openSession) : null,
+            'overtime_enabled'     => $this->hours->overtimeEnabled($employee),
+            'attendance_id'        => $attendance?->id,
+            'sessions'             => $sessions,
+            'open_session'         => $openSession ? $this->formatSession($openSession) : null,
             'elapsed_open_session_minutes' => $openSession
                 ? max(0, (int) $openSession->checkInAt()->diffInMinutes(now()))
                 : 0,
             ...($attendance ? $this->buildSummary($attendance) : [
-                'total_worked_minutes' => 0,
-                'total_worked_hours' => 0.0,
-                'remaining_minutes' => (int) round($employee->requiredDailyHours() * 60),
-                'hours_status' => null,
-                'sessions_count' => 0,
+                'total_worked_minutes'        => 0,
+                'total_worked_hours'          => 0.0,
+                'remaining_minutes'           => (int) round($employee->requiredDailyHours() * 60),
+                'required_minutes'            => (int) round($employee->requiredDailyHours() * 60),
+                'required_hours'              => (float) $employee->requiredDailyHours(),
+                'overtime_minutes'            => 0,
+                'overtime_hours'              => 0.0,
+                'hours_status'                => null,
+                'sessions_count'              => 0,
+                'completed_sessions_count'    => 0,
+                'open_sessions_count'         => $openSession ? 1 : 0,
+                'shortfall_deduction_amount'  => 0.0,
             ]),
         ];
     }
 
     private function buildSummary(Attendance $attendance): array
     {
-        $totalMinutes = (int) ($attendance->total_worked_minutes ?? $attendance->logs->sum('duration_minutes'));
-        $requiredMinutes = (int) round((float) ($attendance->required_hours ?? 0) * 60);
-
-        return [
-            'total_worked_minutes' => $totalMinutes,
-            'total_worked_hours' => round($totalMinutes / 60, 2),
-            'remaining_minutes' => $requiredMinutes > 0 ? max(0, $requiredMinutes - $totalMinutes) : 0,
-            'overtime_minutes' => ($requiredMinutes > 0 && $totalMinutes > $requiredMinutes)
-                ? $totalMinutes - $requiredMinutes
-                : 0,
-            'hours_status' => $attendance->hours_status,
-            'sessions_count' => $attendance->logs->count(),
-            'shortfall_deduction_amount' => (float) ($attendance->deduction_amount ?? 0),
-        ];
+        return $this->hours->summary($attendance, $attendance->employee);
     }
 
     private function formatSession(AttendanceLog $log): array
     {
         return [
             'id' => $log->id,
+            'log_date' => $log->log_date?->toDateString(),
             'check_in_time' => $log->check_in_time ? substr($log->check_in_time, 0, 5) : null,
             'check_out_time' => $log->check_out_time ? substr($log->check_out_time, 0, 5) : null,
-            'duration_minutes' => $log->duration_minutes,
+            // Always derived from this session's own punch pair; 0 for open sessions.
+            'duration_minutes' => $this->hours->sessionMinutes($log),
+            'duration_hours' => round($this->hours->sessionMinutes($log) / 60, 2),
             'is_open' => $log->isOpen(),
             'source' => $log->source,
             'notes' => $log->notes,

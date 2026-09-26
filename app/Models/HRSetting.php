@@ -21,6 +21,12 @@ class HRSetting extends Model
      */
     public const EARLY_EXIT_DEDUCTION_ENABLED = 'early_exit_deduction_enabled';
 
+    /**
+     * Global overtime master switch. When false, no employee earns overtime
+     * hours regardless of their own overtime_enabled flag.
+     */
+    public const OVERTIME_ENABLED = 'overtime_enabled';
+
     public static function get(string $key, mixed $default = null): mixed
     {
         $value = Cache::rememberForever(self::CACHE_PREFIX . $key, fn () => self::query()->where('key', $key)->value('value'));

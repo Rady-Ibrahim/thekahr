@@ -53,4 +53,18 @@ class AttendanceLog extends Model
 
         return $out;
     }
+
+    /**
+     * This session's own duration in minutes, computed from its check-in /
+     * check-out pair. Returns 0 for a missing check-in or an open session, so
+     * a day total can never be inflated by an unfinished punch.
+     */
+    public function durationMinutes(): int
+    {
+        if ($this->isOpen() || $this->check_in_time === null) {
+            return 0;
+        }
+
+        return (int) $this->checkOutAt()->diffInMinutes($this->checkInAt());
+    }
 }

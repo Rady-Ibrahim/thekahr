@@ -36,7 +36,10 @@ class ReportController
                 'present_days'    => $attendance->where('status', 'present')->count(),
                 'absent_days'     => $attendance->where('status', 'absent')->count(),
                 'late_count'      => $attendance->where('status', 'late')->count(),
-                'total_hours'     => $attendance->sum('working_hours'),
+                // Hours are always derived from the minute totals, never from
+                // the truncated integer column.
+                'total_hours'     => round($attendance->sum('total_worked_minutes') / 60, 2),
+                'total_overtime_hours' => round($attendance->sum('overtime_minutes') / 60, 2),
                 'manager'         => $emp->manager?->name,
             ];
         });
@@ -67,7 +70,9 @@ class ReportController
                 'late'            => $records->where('status', 'late')->count(),
                 'on_leave'        => $records->where('status', 'on_leave')->count(),
                 'late_minutes'    => $records->sum('late_minutes'),
-                'working_hours'   => $records->sum('working_hours'),
+                'working_hours'   => round($records->sum('total_worked_minutes') / 60, 2),
+                'overtime_hours'  => round($records->sum('overtime_minutes') / 60, 2),
+                'overtime_days'   => $records->where('hours_status', Attendance::HOURS_OVERTIME)->count(),
             ];
         }
 

@@ -12,8 +12,19 @@ use Illuminate\Support\Facades\Config;
 
 class AttendancePenaltyService
 {
-    /** @var int Hours after check-in before a forgotten session is auto-closed. */
-    private const AUTO_CLOSE_AFTER_HOURS = 20;
+    /**
+     * Hours after check-in before a forgotten session is auto-closed.
+     * This is ONLY a cleanup threshold for stale open sessions - it is never
+     * used as a worked-hours value. Hours always come from a real punch pair.
+     */
+    public static function autoCloseAfterHours(): float
+    {
+        return (float) Config::get('hr.working_hours.auto_close_after_hours', 20);
+    }
+
+    public function __construct(private AttendanceHoursService $hours)
+    {
+    }
 
     /**
      * Dynamically resolve the shift that matches the employee's check-in time.
@@ -131,12 +142,12 @@ class AttendancePenaltyService
             ? $attendance->check_in_time
             : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
 
-        return $now->greaterThan($checkIn->copy()->addHours(self::AUTO_CLOSE_AFTER_HOURS));
+        return $now->greaterThan($checkIn->copy()->addHours(self::autoCloseAfterHours()));
     }
 
     /**
      * The check-out time to stamp on an auto-closed forgotten session:
-     * check-in time + auto_close_after_hours (default 20 hours).
+     * check-in time + auto_close_after_hours.
      */
     public function autoCloseCheckOutTime(Attendance $attendance): string
     {
@@ -148,7 +159,7 @@ class AttendancePenaltyService
             ? $attendance->check_in_time
             : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
 
-        return $checkIn->copy()->addHours(self::AUTO_CLOSE_AFTER_HOURS)->toTimeString();
+        return $checkIn->copy()->addHours(self::autoCloseAfterHours())->toTimeString();
     }
 
     /**
@@ -384,6 +395,7 @@ class AttendancePenaltyService
             ? $attendance->attendance_date
             : Carbon::parse($attendance->attendance_date);
 
+        $dateString = $date->toDateString();
         $employee = $attendance->employee;
 
         if (!$employee) {
@@ -402,7 +414,7 @@ class AttendancePenaltyService
         if ($attendance->check_in_time) {
             $checkIn = $attendance->check_in_time instanceof Carbon
                 ? $attendance->check_in_time
-                : Carbon::parse($date->toDateString() . ' ' . $attendance->check_in_time);
+                : Carbon::parse($dateString . ' ' . $attendance->check_in_time);
 
             $lateResult = $shift
                 ? $this->calculateLatePenalty($shift, $checkIn, $date, $employee)
@@ -411,7 +423,7 @@ class AttendancePenaltyService
             if ($attendance->check_out_time) {
                 $checkOut = $attendance->check_out_time instanceof Carbon
                     ? $attendance->check_out_time
-                    : Carbon::parse($date->toDateString() . ' ' . $attendance->check_out_time);
+                    : Carbon::parse($dateString . ' ' . $attendance->check_out_time);
 
                 // A night shift may cross midnight: if the clock time of check-out is
                 // earlier than check-in, the check-out took place on the next day.
@@ -425,20 +437,85 @@ class AttendancePenaltyService
             }
         }
 
+        // ── Hours: derived only from a real check-in/check-out pair ──────────
+        // A record with no punch times yields 0.00 hours. It NEVER falls back to
+        // the auto-close window, the default shift length, or any hardcoded value.
+        $workedMinutes = $this->hours->minutesBetween(
+            $dateString,
+            $attendance->check_in_time,
+            $attendance->check_out_time
+        );
+        $workedHours = round($workedMinutes / 60, 2);
+
         $attendance->late_minutes = $lateResult['late_minutes'];
         $attendance->applied_late_deduction_type = $lateResult['deduction_type'];
 
         $attendance->early_exit_minutes = $earlyResult['early_exit_minutes'];
-        $attendance->actual_worked_hours = $earlyResult['actual_worked_hours'];
+        $attendance->actual_worked_hours = $workedHours;
+        $attendance->working_hours = (int) floor($workedMinutes / 60);
+        $attendance->total_worked_minutes = $workedMinutes;
+        $attendance->total_worked_hours = $workedHours;
         $attendance->applied_early_deduction_type = $earlyResult['deduction_type'];
 
         $totalDeduction = ($lateResult['deduction_amount'] ?? 0) + ($earlyResult['deduction_amount'] ?? 0);
-        $attendance->deduction_amount = $totalDeduction;
+        $attendance->deduction_amount = round((float) $totalDeduction, 2);
         $attendance->penalty_overridden = false;
+
+        // ── Unified hours status + overtime for the shift-based flow too ────
+        $this->applyHoursStatus($attendance, $employee, $shift, $workedMinutes);
 
         $attendance->save();
 
         return $attendance->fresh();
+    }
+
+    /**
+     * Persist the unified hours_status / required_hours / overtime columns for
+     * the shift-based (non custom-attendance) flow, so overtime behaves exactly
+     * the same in both attendance systems.
+     *
+     * Overtime is granted only when:
+     *  a) overtime is enabled (system + employee),
+     *  b) the day has a real completed check-in/check-out pair,
+     *  c) the day is not absent / on-leave / excused,
+     *  d) worked minutes exceed the required shift minutes.
+     *
+     * The shortfall DEDUCTION stays owned by the late/early-exit penalty flow
+     * for shift-based attendance; only the reporting flag is written here so
+     * the same absence is never charged twice.
+     */
+    private function applyHoursStatus(Attendance $attendance, Employee $employee, ?Shift $shift, int $workedMinutes): void
+    {
+        $requiredHours = $shift?->requiredHours() ?? $employee->requiredDailyHours();
+        $requiredMinutes = (int) round($requiredHours * 60);
+
+        $attendance->required_hours = round($requiredHours, 2);
+
+        // Nothing was actually worked, or the employee was not in: no hours,
+        // no overtime, no classification.
+        $hasWorkedPair = $workedMinutes > 0;
+        $isPresent = !in_array($attendance->status, ['absent', 'on_leave', 'excused'], true);
+
+        if (!$hasWorkedPair || !$isPresent) {
+            $attendance->hours_status     = null;
+            $attendance->overtime_minutes = 0;
+            $attendance->overtime_hours   = 0.0;
+
+            return;
+        }
+
+        $overtimeMinutes = 0;
+
+        if ($this->hours->overtimeEnabled($employee) && $requiredMinutes > 0 && $workedMinutes > $requiredMinutes) {
+            $overtimeMinutes = $workedMinutes - $requiredMinutes;
+        }
+
+        $attendance->hours_status = $workedMinutes < $requiredMinutes
+            ? Attendance::HOURS_SHORTFALL
+            : ($overtimeMinutes > 0 ? Attendance::HOURS_OVERTIME : Attendance::HOURS_FULFILLED);
+
+        $attendance->overtime_minutes = $overtimeMinutes;
+        $attendance->overtime_hours   = round($overtimeMinutes / 60, 2);
     }
 
     /**
