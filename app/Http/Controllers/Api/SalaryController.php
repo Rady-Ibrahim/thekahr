@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Employee;
 use App\Models\Salary;
+use App\Services\AdvanceDeductionService;
 use App\Services\SalaryCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SalaryController
 {
@@ -110,22 +112,39 @@ class SalaryController
 
     public function pay(Request $request, $id): JsonResponse
     {
-        $salary    = Salary::findOrFail($id);
+        $salary = Salary::findOrFail($id);
+
+        // payment_method is genuinely optional: the UI's "صرف" button posts no body.
+        // Default it instead of rejecting the disbursement with a 422.
         $validated = $request->validate([
-            'payment_method' => 'required|in:cash,bank_transfer,check,instapay',
+            'payment_method' => 'nullable|in:cash,bank_transfer,check,instapay',
         ]);
 
-        if ($salary->status !== 'approved') {
+        if (! in_array($salary->status, ['approved', 'paid'], true)) {
             return response()->json(['success' => false, 'message' => 'يجب اعتماد الراتب أولاً قبل الصرف'], 422);
         }
 
-        $salary->update([
-            'status'         => 'paid',
-            'payment_method' => $validated['payment_method'],
-            'payment_date'   => now(),
-        ]);
+        $alreadyPaid = $salary->status === 'paid';
 
-        return response()->json(['success' => true, 'message' => 'تم صرف الراتب بنجاح', 'data' => $salary]);
+        // status flip and advance consumption must be all-or-nothing: previously the
+        // salary could end up 'paid' with no installment collected if the deduction
+        // threw. The nested transaction becomes a savepoint under this one.
+        $deduction = DB::transaction(function () use ($salary, $validated) {
+            $salary->update([
+                'status'         => 'paid',
+                'payment_method' => $validated['payment_method'] ?? $salary->payment_method ?? 'cash',
+                'payment_date'   => $salary->payment_date ?? now(),
+            ]);
+
+            return app(AdvanceDeductionService::class)->deductForSalary($salary->fresh());
+        });
+
+        return response()->json([
+            'success'  => true,
+            'message'  => $alreadyPaid ? 'تم صرف الراتب مسبقاً' : 'تم صرف الراتب بنجاح',
+            'advances_deducted' => $deduction['deducted'],
+            'data'     => $salary->fresh(),
+        ]);
     }
 
     public function bulkApprove(Request $request): JsonResponse

@@ -27,6 +27,15 @@ class AutoCloseStaleAttendanceMiddleware
             return $next($request);
         }
 
+        // Payroll mutations must never trigger the sweep: autoCloseForgotten() rewrites
+        // attendance deduction_amount, which silently changes attendance_deductions inside
+        // the salary being calculated/approved/paid. The figures a manager approves would
+        // then differ from the ones rendered a second earlier. Read-only salary requests
+        // keep the self-cleaning behaviour.
+        if (! $request->isMethod('GET') && $request->is('api/salaries/*')) {
+            return $next($request);
+        }
+
         $customService = app(CustomAttendanceService::class);
 
         if ($user->hasRole('admin') || $user->hasRole('super_admin') || $user->hasPermission('manage_attendance')) {

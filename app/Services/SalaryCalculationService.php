@@ -58,19 +58,14 @@ class SalaryCalculationService
                 ]);
             }
 
-            // Mark advances as paid for this month
-            foreach ($breakdown['active_advances'] as $adv) {
-                $paid      = $adv->paid_installments + 1;
-                $remaining = $adv->remaining_installments - 1;
-                $remAmount = max(0, $adv->remaining_amount - $adv->installment_amount);
-                $status    = $remaining <= 0 ? 'paid' : 'partially_paid';
-                $adv->update([
-                    'paid_installments'      => $paid,
-                    'remaining_installments' => $remaining,
-                    'remaining_amount'       => $remAmount,
-                    'status'                 => $status,
-                ]);
-            }
+            // NOTE: advance installments are deliberately NOT touched here.
+            // Calculating a salary must never move an advance: it is a read-only
+            // projection of the month. The installment is consumed exactly once, at
+            // real disbursement time, by AdvanceDeductionService::deductForSalary().
+            //
+            // Previously this loop ran here, so every press of "حساب الرواتب" burned
+            // one installment per advance. Calculating N months zeroed an N-month
+            // advance and flipped it to "مسدد" while nothing had been paid.
 
             DB::commit();
 

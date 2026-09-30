@@ -111,16 +111,40 @@ class AdvanceController
         ]);
     }
 
-    public function approve($id): JsonResponse
+    public function approve(Request $request, $id): JsonResponse
     {
-        Advance::findOrFail($id)->update(['status' => 'active']);
-        return response()->json(['success' => true, 'message' => 'تم اعتماد السلفة وبدء الخصم']);
+        $validated = $request->validate(['notes' => 'nullable|string']);
+
+        $advance = Advance::findOrFail($id);
+
+        if ($advance->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'تم التعامل مع هذه السلفة مسبقاً'], 422);
+        }
+
+        $advance->update(['status' => 'active']);
+
+        return response()->json(['success' => true, 'message' => 'تم اعتماد السلفة وبدء الخصم', 'data' => $advance->fresh()]);
     }
 
-    public function reject($id): JsonResponse
+    public function reject(Request $request, $id): JsonResponse
     {
-        Advance::findOrFail($id)->update(['status' => 'paid']);
-        return response()->json(['success' => true, 'message' => 'تم رفض السلفة']);
+        $validated = $request->validate(['reason' => 'nullable|string']);
+
+        $advance = Advance::findOrFail($id);
+
+        if ($advance->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'تم التعامل مع هذه السلفة مسبقاً'], 422);
+        }
+
+        // 'paid' means مسدد / fully settled - it must never be used for a rejection,
+        // otherwise a rejected advance reports its full amount as already collected
+        // in employeeSummary()'s total_paid.
+        $advance->update([
+            'status' => 'rejected',
+            'reason' => $validated['reason'] ?? $advance->reason,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'تم رفض السلفة', 'data' => $advance->fresh()]);
     }
 
     public function destroy($id): JsonResponse
@@ -139,11 +163,16 @@ class AdvanceController
     {
         $advances = Advance::where('employee_id', $employeeId)->get();
 
+        $counted = $advances->whereNotIn('status', ['rejected']);
+
         $summary = [
-            'total_advances'   => $advances->sum('amount'),
-            'total_remaining'  => $advances->whereIn('status', ['active', 'partially_paid'])->sum('remaining_amount'),
-            'total_paid'       => $advances->where('status', 'paid')->sum('amount'),
-            'active_count'     => $advances->whereIn('status', ['active', 'partially_paid'])->count(),
+            'total_advances'  => $counted->sum('amount'),
+            'total_remaining' => $counted->whereIn('status', ['active', 'partially_paid'])->sum('remaining_amount'),
+            // amount actually collected, per advance, is amount - remaining_amount.
+            // Summing remaining_amount here would always be 0 for a settled advance.
+            'total_paid'      => $counted->sum(fn (Advance $a) => (float) $a->amount - (float) $a->remaining_amount),
+            'total_rejected'  => $advances->where('status', 'rejected')->sum('amount'),
+            'active_count'    => $counted->whereIn('status', ['active', 'partially_paid'])->count(),
         ];
 
         return response()->json(['success' => true, 'data' => $advances, 'summary' => $summary]);
