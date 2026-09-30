@@ -47,16 +47,20 @@
                 <div class="col-md-3"><div class="stat-card"><div class="stat-value text-danger" id="fsTotalDeductions">-</div><div class="stat-label">الخصومات</div></div></div>
                 <div class="col-md-3"><div class="stat-card"><div class="stat-value fw-bold" id="fsNet">-</div><div class="stat-label">الصافي</div></div></div>
             </div>
+            <div class="row g-2 mt-1" id="fsDeductionBreakdown"></div>
+            <div class="mt-3 py-2 px-3 rounded small" id="fsEquation"></div>
+            <div class="mt-2" id="fsStaleAlert"></div>
         </div>
     </div>
 
     <!-- Salary Detail -->
-    <div class="section-card mb-4" id="fsSalarySection" style="display:none">
+    <div class="section-card mb-4" id="fsSalarySection">
         <div class="section-header"><i class="fas fa-money-bill-wave text-primary"></i><h5 class="section-title">تفاصيل الراتب</h5></div>
         <div class="table-responsive">
             <table class="data-table">
                 <thead><tr><th>النوع</th><th>الاسم</th><th>السبب</th><th>المبلغ</th></tr></thead>
                 <tbody id="fsSalaryComponents"></tbody>
+                <tfoot id="fsSalaryComponentsFoot"></tfoot>
             </table>
         </div>
     </div>
@@ -106,9 +110,17 @@
 @push('scripts')
 <script>
 const salStatuses = { draft:'مسودة', pending_approval:'بانتظار الاعتماد', approved:'معتمد', paid:'مدفوع', rejected:'مرفوض' };
+const fsCompLabels = {
+    incentive: 'حافز', allowance: 'بدل', commission: 'عمولة',
+    deduction: 'خصم مباشر', attendance_deduction: 'خصم حضور',
+    advance: 'قسط سلفة', violation: 'مخالفة',
+    points_credit: 'نقاط (له)', points_debit: 'نقاط (عليه)'
+};
 let lastStatement = null;
 let fsEmpSearch = null;
 let fsEmployees = [];
+
+function fsComponentLabel(type) { return fsCompLabels[type] || type; }
 
 async function initFsEmpSearch() {
     fsEmpSearch = createSearchableSelect(document.getElementById('fs_emp_search'), 'employees');
@@ -136,22 +148,63 @@ async function loadStatement() {
     document.getElementById('statementContainer').style.display = 'block';
 
     // Employee info
-    document.getElementById('fsEmpName').textContent = `${r.employee.name} (${r.employee.employee_code}) - ${r.employee.department??''}`;
-    document.getElementById('fsBaseSalary').textContent = Number(r.employee.base_salary).toLocaleString() + ' ج.م';
-    const additions = (r.summary.incentives_total||0) + (r.summary.allowances_total||0) + (r.summary.points_credit_total||0);
-    const deductions = (r.summary.deductions_total||0) + (r.summary.advances_installment_total||0) + (r.summary.points_debit_total||0) + (r.summary.attendance_deduction_total||0);
-    document.getElementById('fsTotalAdditions').textContent = '+' + Number(additions).toLocaleString() + ' ج.م';
-    document.getElementById('fsTotalDeductions').textContent = '-' + Number(deductions).toLocaleString() + ' ج.م';
-    document.getElementById('fsNet').textContent = Number(r.summary.estimated_net||0).toLocaleString() + ' ج.م';
+    const s  = r.summary || {};
+    const t  = r.totals  || {};
+    const bd = r.breakdown || {};
+    const money = n => Number(n || 0).toLocaleString();
 
-    // Salary components
-    if (r.data.salary) {
-        document.getElementById('fsSalarySection').style.display = 'block';
-        const comps = r.data.salary.components || [];
-        document.getElementById('fsSalaryComponents').innerHTML = comps.length
-            ? comps.map(c => `<tr><td>${c.component_type}</td><td>${c.component_name}</td><td>${c.reason||'-'}</td><td class="${c.amount<0?'text-danger':'text-success'}">${Number(c.amount).toLocaleString()} ج.م</td></tr>`).join('')
-            : '<tr><td colspan="4" class="text-muted text-center">لا توجد مكونات</td></tr>';
-    }
+    document.getElementById('fsEmpName').textContent = `${r.employee.name} (${r.employee.employee_code}) - ${r.employee.department??''}`;
+    document.getElementById('fsBaseSalary').textContent       = money(s.base_salary) + ' ج.م';
+    document.getElementById('fsTotalAdditions').textContent   = '+' + money(s.total_additions) + ' ج.م';
+    document.getElementById('fsTotalDeductions').textContent  = '-' + money(s.total_all_deductions) + ' ج.م';
+    document.getElementById('fsNet').textContent              = money(s.net_salary) + ' ج.م';
+
+    // Sub-totals so every single deducted EGP is accounted for under the card.
+    const chips = [
+        { l: 'إجمالي المستحق', v: s.gross_salary, c: 'text-primary' },
+        { l: 'خصومات مباشرة',  v: s.direct_deductions_total, c: 'text-danger' },
+        { l: 'خصم حضور وتأخير', v: s.attendance_deduction_total, c: 'text-danger' },
+        { l: 'أقساط سلف',      v: s.advances_installment_total, c: 'text-danger' },
+        { l: 'خصم نقاط (عليه)', v: s.points_debit_total, c: 'text-danger' },
+    ].filter(x => Number(x.v) > 0);
+    document.getElementById('fsDeductionBreakdown').innerHTML = chips.length
+        ? chips.map(c => `<div class="col-6 col-md"><div class="p-2 bg-light rounded text-center"><small class="text-muted d-block">${c.l}</small><span class="fw-bold ${c.c}">${money(c.v)} ج.م</span></div></div>`).join('')
+        : '';
+
+    const eqOk = t.balances !== false;
+    document.getElementById('fsEquation').innerHTML =
+        `<span class="text-muted">المعادلة:</span>
+         <span class="fw-bold">${money(t.base_salary)}</span> (أساسي)
+         <span class="text-muted">+</span> <span class="fw-bold text-success">${money(t.total_additions)}</span> (إضافات)
+         <span class="text-muted">−</span> <span class="fw-bold text-danger">${money(t.total_all_deductions)}</span> (إجمالي الخصومات)
+         <span class="text-muted">=</span> <span class="fw-bold ${eqOk ? 'text-success' : 'text-danger'}">${money(t.net_salary)} ج.م</span>
+         ${eqOk ? '' : '<span class="text-danger fw-bold"> (غير متوازن)</span>'}`;
+
+    document.getElementById('fsStaleAlert').innerHTML = s.is_stale
+        ? `<div class="alert alert-warning py-2 mb-0" style="font-size:.85rem">
+               <i class="fas fa-triangle-exclamation me-1"></i>
+               الراتب المحفوظ في كشف الرواتب (${money(s.salary_net)} ج.م) لا يطابق الأرقام الحالية.
+               يُرجى إعادة حساب رواتب شهر ${r.month}/${r.year} لتحديثه.
+           </div>`
+        : (s.salary_id ? `<div class="text-muted" style="font-size:.8rem"><i class="fas fa-circle-check text-success me-1"></i>مطابق لراتب محفوظ (${money(s.salary_net)} ج.م) - الحالة: ${salStatuses[s.salary_status] || '-'}</div>` : '');
+
+    // Salary components - always the live breakdown so nothing is ever missing.
+    document.getElementById('fsSalarySection').style.display = 'block';
+    const comps = bd.components || [];
+    document.getElementById('fsSalaryComponents').innerHTML = comps.length
+        ? comps.map(c => `<tr>
+              <td>${fsComponentLabel(c.type)}</td>
+              <td>${escapeHtml(c.name ?? '-')}</td>
+              <td>${escapeHtml(c.reason || '-')}</td>
+              <td class="${Number(c.amount)<0?'text-danger':'text-success'}">${money(c.amount)} ج.م</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="text-muted text-center">لا توجد مكونات</td></tr>';
+    document.getElementById('fsSalaryComponentsFoot').innerHTML = comps.length
+        ? `<tr class="fw-bold">
+              <td colspan="3" class="text-end">الصافي</td>
+              <td class="${t.net_salary < 0 ? 'text-danger' : 'text-success'}">${money(t.net_salary)} ج.م</td>
+          </tr>`
+        : '';
 
     // Incentives
     const inc = r.data.incentives || [];
@@ -174,13 +227,22 @@ async function loadStatement() {
         ? pts.map(p => `<tr><td>${p.direction==='credit'?'له (+)':'عليه (-)'}</td><td>${p.reason||'-'}</td><td>${Number(p.points).toLocaleString()}</td><td class="${p.direction==='credit'?'text-success':'text-danger'}">${Number(p.total_amount).toLocaleString()} ج.م</td></tr>`).join('')
         : '<tr><td colspan="4" class="text-muted text-center">لا توجد نقاط</td></tr>';
 
-    // Deductions
+    // Deductions - every deducted item (direct rows, per-day attendance, advances,
+    // points debits) so nothing hides behind a lump sum.
     const ded = r.data.deductions || [];
-    document.getElementById('fsDedCount').textContent = `(${ded.length})`;
-    document.getElementById('fsDeductions').innerHTML = ded.length
-        ? ded.map(d => `<tr><td>${d.deduction_type}</td><td>${d.reason||'-'}</td><td class="text-danger">${Number(d.amount).toLocaleString()} ج.م</td><td>${d.status==='computed'
+    const advRows = (r.data.advances || [])
+        .filter(a => ['active','partially_paid'].includes(a.status) && Number(a.remaining_installments) > 0)
+        .map(a => ({ deduction_type: 'قسط سلفة', reason: a.reason || 'سلفة', amount: a.installment_amount, status: 'computed', date: a.date }));
+    const debitRow = Number(s.points_debit_total) > 0
+        ? [{ deduction_type: 'نقاط (عليه)', reason: 'خصم نقاط', amount: s.points_debit_total, status: 'computed', date: null }]
+        : [];
+    const dedAll = [...ded, ...advRows, ...debitRow];
+    document.getElementById('fsDedCount').textContent = `(${dedAll.length})`;
+    document.getElementById('fsDeductions').innerHTML = dedAll.length
+        ? dedAll.map(d => `<tr><td>${escapeHtml(d.deduction_type||'-')}</td><td>${escapeHtml(d.reason||'-')}${d.date ? `<br><small class="text-muted">${escapeHtml(d.date)}</small>`:''}</td><td class="text-danger">${money(d.amount)} ج.م</td><td>${d.status==='computed'
             ? '<span class="badge-status badge-active">محسوب</span>'
             : `<span class="badge-status ${d.status==='approved'?'badge-active':d.status==='rejected'?'badge-rejected':'badge-pending'}">${d.status==='approved'?'معتمد':d.status==='rejected'?'مرفوض':'معلق'}</span>`}</td></tr>`).join('')
+        + `<tr class="fw-bold"><td colspan="2" class="text-end">إجمالي الخصومات</td><td class="text-danger">${money(s.total_all_deductions)} ج.م</td><td></td></tr>`
         : '<tr><td colspan="4" class="text-muted text-center">لا توجد خصومات</td></tr>';
 
     // Advances
@@ -195,12 +257,12 @@ function printStatementPDF() {
     const r = lastStatement;
     if (!r) { showAlert('قم بعرض كشف الحساب أولاً', 'danger'); return; }
 
-    const s = r.summary || {};
+    const s  = r.summary || {};
+    const t  = r.totals  || {};
+    const bd = r.breakdown || {};
     const emp = r.employee || {};
     const d = r.data || {};
-
-    const additions = (s.incentives_total||0) + (s.allowances_total||0) + (s.points_credit_total||0);
-    const deductions = (s.deductions_total||0) + (s.advances_installment_total||0) + (s.points_debit_total||0) + (s.attendance_deduction_total||0);
+    const money = n => Number(n || 0).toLocaleString();
     const statusMap = { approved:'معتمد', rejected:'مرفوض', pending:'معلق', active:'نشط', computed:'محسوب' };
     const st = st2 => statusMap[st2] || st2;
 
@@ -210,20 +272,27 @@ function printStatementPDF() {
             <div class="meta">${escapeHtml(emp.name || '')}${emp.employee_code ? ' - ' + escapeHtml(emp.employee_code) : ''}${emp.department ? ' - ' + escapeHtml(emp.department) : ''} | شهر ${r.month} / ${r.year}</div>
         </div>
         <div class="sum">
-            <div class="box"><div class="lbl">الراتب الأساسي</div><div class="val">${Number(s.base_salary||0).toLocaleString()} ج.م</div></div>
-            <div class="box"><div class="lbl">الإضافات</div><div class="val pos">+${Number(additions).toLocaleString()} ج.م</div></div>
-            <div class="box"><div class="lbl">الخصومات</div><div class="val neg">-${Number(deductions).toLocaleString()} ج.م</div></div>
-            <div class="box"><div class="lbl">الصافي</div><div class="val">${Number(s.estimated_net||0).toLocaleString()} ج.م</div></div>
-        </div>`;
+            <div class="box"><div class="lbl">الراتب الأساسي</div><div class="val">${money(t.base_salary)} ج.م</div></div>
+            <div class="box"><div class="lbl">الإضافات</div><div class="val pos">+${money(t.total_additions)} ج.م</div></div>
+            <div class="box"><div class="lbl">الخصومات</div><div class="val neg">-${money(t.total_all_deductions)} ج.م</div></div>
+            <div class="box"><div class="lbl">الصافي</div><div class="val">${money(t.net_salary)} ج.م</div></div>
+        </div>
+        <div class="meta" style="margin-top:8px">
+            إجمالي المستحق: ${money(t.gross_salary)} ج.م —
+            خصومات مباشرة: ${money(s.direct_deductions_total)} ج.م —
+            خصم حضور وتأخير: ${money(s.attendance_deduction_total)} ج.م —
+            أقساط سلف: ${money(t.advances)} ج.م —
+            خصم نقاط (عليه): ${money(t.points_debit)} ج.م
+        </div>
+        ${s.is_stale ? `<div class="meta" style="color:#b45309;margin-top:4px">تنبيه: الراتب المحفوظ (${money(s.salary_net)} ج.م) لا يطابق الأرقام الحالية - يُرجى إعادة الحساب.</div>` : ''}`;
 
-    if (d.salary) {
-        const comps = d.salary.components || [];
-        html += `<div class="h2">تفاصيل الراتب</div><table><thead><tr><th>النوع</th><th>الاسم</th><th>السبب</th><th>المبلغ</th></tr></thead><tbody>`;
-        html += comps.length
-            ? comps.map(c => `<tr><td>${escapeHtml(c.component_type)}</td><td>${escapeHtml(c.component_name)}</td><td>${escapeHtml(c.reason||'-')}</td><td class="${Number(c.amount)<0?'neg':'pos'}">${Number(c.amount).toLocaleString()} ج.م</td></tr>`).join('')
-            : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد مكونات</td></tr>';
-        html += `</tbody></table>`;
-    }
+    const comps = bd.components || [];
+    html += `<div class="h2">تفاصيل الراتب</div><table><thead><tr><th>النوع</th><th>الاسم</th><th>السبب</th><th>المبلغ</th></tr></thead><tbody>`;
+    html += comps.length
+        ? comps.map(c => `<tr><td>${escapeHtml(fsComponentLabel(c.type))}</td><td>${escapeHtml(c.name ?? '-')}</td><td>${escapeHtml(c.reason || '-')}</td><td class="${Number(c.amount)<0?'neg':'pos'}">${money(c.amount)} ج.م</td></tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد مكونات</td></tr>';
+    html += `<tr style="background:#eef1fb;font-weight:800"><td colspan="3">الصافي</td><td>${money(t.net_salary)} ج.م</td></tr>`;
+    html += `</tbody></table>`;
 
     const inc = d.incentives || [];
     html += `<div class="h2">الحوافز (${inc.length})</div><table><thead><tr><th>النوع</th><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>`;
@@ -246,11 +315,18 @@ function printStatementPDF() {
         : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد نقاط</td></tr>';
     html += `</tbody></table>`;
 
-    const ded = d.deductions || [];
-    html += `<div class="h2">الخصومات (${ded.length})</div><table><thead><tr><th>النوع</th><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>`;
-    html += ded.length
-        ? ded.map(x => `<tr><td>${escapeHtml(x.deduction_type)}</td><td>${escapeHtml(x.reason||'-')}</td><td class="neg">${Number(x.amount).toLocaleString()} ج.م</td><td>${st(x.status)}</td></tr>`).join('')
+    const advRows = (d.advances || [])
+        .filter(a => ['active','partially_paid'].includes(a.status) && Number(a.remaining_installments) > 0)
+        .map(a => ({ deduction_type: 'قسط سلفة', reason: a.reason || 'سلفة', amount: a.installment_amount, status: 'computed' }));
+    const debitRow = Number(s.points_debit_total) > 0
+        ? [{ deduction_type: 'نقاط (عليه)', reason: 'خصم نقاط', amount: s.points_debit_total, status: 'computed' }]
+        : [];
+    const dedAll = [...(d.deductions || []), ...advRows, ...debitRow];
+    html += `<div class="h2">الخصومات (${dedAll.length})</div><table><thead><tr><th>النوع</th><th>السبب</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>`;
+    html += dedAll.length
+        ? dedAll.map(x => `<tr><td>${escapeHtml(x.deduction_type||'-')}</td><td>${escapeHtml(x.reason||'-')}</td><td class="neg">${money(x.amount)} ج.م</td><td>${st(x.status)}</td></tr>`).join('')
         : '<tr><td colspan="4" style="text-align:center;color:#6b7280">لا توجد خصومات</td></tr>';
+    html += `<tr style="background:#eef1fb;font-weight:800"><td colspan="2">إجمالي الخصومات</td><td>${money(s.total_all_deductions)} ج.م</td><td></td></tr>`;
     html += `</tbody></table>`;
 
     const adv = d.advances || [];

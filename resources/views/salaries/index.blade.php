@@ -127,11 +127,13 @@ async function loadSummary() {
     const year  = document.getElementById('salYear').value;
     const r = await apiFetch(`/salaries/monthly-summary?month=${month}&year=${year}`);
     if (!r.success) return;
-    const d = r.data;
-    document.getElementById('salEmpCount').textContent = d.employee_count ?? '-';
+    const d = r.data || {};
+    document.getElementById('salEmpCount').textContent = d.total_employees ?? '-';
     document.getElementById('salGross').textContent    = Number(d.total_gross ?? 0).toLocaleString('ar-EG') + ' ج.م';
     document.getElementById('salNet').textContent      = Number(d.total_net ?? 0).toLocaleString('ar-EG') + ' ج.م';
-    document.getElementById('salPending').textContent  = d.pending_count ?? '-';
+    const byStatus = d.by_status || {};
+    const pending = (byStatus.draft || 0) + (byStatus.pending_approval || 0) + (byStatus.on_hold || 0);
+    document.getElementById('salPending').textContent  = pending;
 }
 
 async function loadSalaries(page = 1) {
@@ -153,23 +155,26 @@ async function loadSalaries(page = 1) {
         return;
     }
     document.getElementById('salariesTable').innerHTML = all.map(s => {
-        const incentives = Number(s.total_incentives ?? 0);
-        const deductions = Number(s.total_deductions ?? 0);
-        const ptsCredit  = Number(s.total_points_credit ?? 0);
-        const ptsDebit   = Number(s.total_points_debit ?? 0);
-        const realIncentives = incentives - ptsCredit;
-        const realDeductions = deductions - ptsDebit;
+        // salaries.total_incentives holds incentives only and total_deductions holds
+        // (direct + attendance penalties); points are stored in their own columns.
+        // Never subtract one column from the other or the grid stops adding up.
+        const incentives  = Number(s.total_incentives ?? 0);
+        const deductions  = Number(s.total_deductions ?? 0);
+        const ptsCredit   = Number(s.total_points_credit ?? 0);
+        const ptsDebit    = Number(s.total_points_debit ?? 0);
+        const advances    = Number(s.total_advances ?? 0);
+        const violations  = Number(s.total_violations ?? 0);
         return `<tr>
             <td><input type="checkbox" class="salary-check" value="${s.id}" ${selectedSalaries.has(s.id) ? 'checked' : ''} onchange="toggleSalary(${s.id})"></td>
             <td><strong>${s.employee?.name ?? '-'}</strong><br><small class="text-muted">${s.employee?.employee_code ?? '-'}</small></td>
             <td>${Number(s.base_salary).toLocaleString()}</td>
-            <td class="text-success">+${realIncentives.toLocaleString()}</td>
+            <td class="text-success">+${incentives.toLocaleString()}</td>
             <td class="text-success">+${Number(s.total_allowances ?? 0).toLocaleString()}</td>
             <td class="text-success">+${Number(s.total_commissions ?? 0).toLocaleString()}</td>
             <td class="text-success">${ptsCredit > 0 ? '+'+ptsCredit.toLocaleString() : '-'}</td>
             <td class="text-danger">${ptsDebit > 0 ? '-'+ptsDebit.toLocaleString() : '-'}</td>
-            <td class="text-danger">-${realDeductions.toLocaleString()}</td>
-            <td class="text-danger">-${Number(s.total_advances ?? 0).toLocaleString()}</td>
+            <td class="text-danger" title="خصومات مباشرة + خصومات الحضور">-${deductions.toLocaleString()}</td>
+            <td class="text-danger">-${advances.toLocaleString()}</td>
             <td class="fw-bold text-primary fs-6">${Number(s.net_salary).toLocaleString()} ج.م</td>
             <td><span class="badge-status ${salBadge[s.status] || 'badge-draft'}">${salLabel[s.status] || s.status}</span></td>
             <td>
@@ -221,19 +226,90 @@ async function paySalary(id) {
     else showAlert(r.message, 'danger');
 }
 
+function salaryModal() {
+    const el = document.getElementById('salaryDetailModal');
+    if (!el) return null;
+    // getOrCreateInstance reuses the live instance, so a modal left open by a
+    // previous click can always be re-shown instead of silently no-op'ing.
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) return bootstrap.Modal.getOrCreateInstance(el);
+    return null;
+}
+
+function openSalaryModal() {
+    const el = document.getElementById('salaryDetailModal');
+    const m = salaryModal();
+    if (m) { m.show(); return; }
+    // Fallback when the Bootstrap bundle is unavailable.
+    el.classList.add('show');
+    el.style.display = 'block';
+    el.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+}
+
+function closeSalaryModal() {
+    const el = document.getElementById('salaryDetailModal');
+    const m = salaryModal();
+    if (m) { m.hide(); return; }
+    el.classList.remove('show');
+    el.style.display = 'none';
+    el.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+}
+
+function setSalaryModalBody(html) {
+    const el = document.getElementById('salaryDetailBody');
+    if (el) el.innerHTML = html;
+}
+
 async function viewSalary(id) {
-    const modal = new bootstrap.Modal(document.getElementById('salaryDetailModal'));
-    document.getElementById('salaryDetailBody').innerHTML = '<div class="text-center py-4"><div class="spinner mx-auto"></div></div>';
-    modal.show();
+    // Reset any instance that is still open from a previous click.
+    const existing = (typeof bootstrap !== 'undefined' && bootstrap.Modal)
+        ? bootstrap.Modal.getInstance(document.getElementById('salaryDetailModal'))
+        : null;
+    if (existing) existing.hide();
+
+    setSalaryModalBody('<div class="text-center py-4"><div class="spinner mx-auto"></div></div>');
+    openSalaryModal();
+
     const r = await apiFetch('/salaries/' + id);
-    if (!r.success) return;
+    if (!r.success) {
+        setSalaryModalBody(`<div class="alert alert-danger mb-0">
+            <i class="fas fa-triangle-exclamation me-1"></i>
+            ${escHtml(r.message || 'تعذر تحميل تفاصيل الراتب')}
+        </div>`);
+        return;
+    }
+
     const s = r.data;
+    if (!s) {
+        setSalaryModalBody('<div class="alert alert-warning mb-0">لا توجد بيانات لهذا الراتب</div>');
+        return;
+    }
+
     const components = s.components || [];
     const attendanceComponents = components.filter(c => c.component_type === 'attendance_deduction');
     const attendanceAmount = attendanceComponents.reduce((sum, c) => sum + Math.abs(Number(c.amount || 0)), 0);
 
+    const money = n => Number(n || 0).toLocaleString();
+
+    // totals.total_deductions already = direct deductions + attendance penalties.
+    // Points live in their own columns, so they are never subtracted here.
+    const base        = Number(s.base_salary ?? 0);
+    const incentives  = Number(s.total_incentives ?? 0);
+    const allowances  = Number(s.total_allowances ?? 0);
+    const commissions = Number(s.total_commissions ?? 0);
+    const ptsCredit   = Number(s.total_points_credit ?? 0);
+    const ptsDebit    = Number(s.total_points_debit ?? 0);
+    const deductions  = Number(s.total_deductions ?? 0);
+    const advances    = Number(s.total_advances ?? 0);
+    const violations  = Number(s.total_violations ?? 0);
+    const totalAdditions = incentives + allowances + commissions + ptsCredit;
+    const totalAllDeductions = deductions + ptsDebit + advances + violations;
+    const net = Number(s.net_salary ?? 0);
+    const balances = Math.abs(round2(base + totalAdditions - totalAllDeductions) - net) < 0.01;
+
     let attendanceDetailHtml = '';
-    if (attendanceAmount > 0 && s.employee?.id) {
+    if (attendanceComponents.length && s.employee?.id) {
         const attR = await apiFetch(`/attendance/monthly-report/${s.employee.id}?month=${s.month}&year=${s.year}`);
         if (attR.success && attR.data?.length) {
             const attRecords = attR.data;
@@ -242,7 +318,7 @@ async function viewSalary(id) {
                 <div class="mt-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="text-muted mb-0"><i class="fas fa-business-time me-1"></i> تفاصيل خصم الحضور</h6>
-                        <span class="text-muted" style="font-size:.8rem">إجمالي الخصم: <strong class="text-danger">${attendanceAmount.toLocaleString()} ج.م</strong></span>
+                        <span class="text-muted" style="font-size:.8rem">إجمالي الخصم: <strong class="text-danger">${money(attendanceAmount)} ج.م</strong></span>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-4"><div class="p-1 bg-light rounded text-center"><small class="text-muted">غياب</small><div class="fw-bold">${attStats.absent || 0}</div></div></div>
@@ -251,7 +327,7 @@ async function viewSalary(id) {
                     </div>
                     <div style="max-height:150px;overflow-y:auto">
                         <table class="data-table" style="font-size:.78rem">
-                            <thead><tr><th>اليوم</th><th>الحالة</th><th>تأخير</th><th>مبكر</th><th>ساعات</th><th>نوع الخصم</th></tr></thead>
+                            <thead><tr><th>اليوم</th><th>الحالة</th><th>تأخير</th><th>مبكر</th><th>ساعات</th><th>نوع الخصم</th><th>المبلغ</th></tr></thead>
                             <tbody>
                                 ${attRecords.slice(0, 31).map(a => `
                                     <tr>
@@ -259,8 +335,9 @@ async function viewSalary(id) {
                                         <td><span class="badge-status ${attBadge[a.status] || 'badge-draft'}" style="font-size:.65rem">${attLabel[a.status] || a.status}</span></td>
                                         <td>${a.late_minutes ? a.late_minutes + ' د' : '-'}</td>
                                         <td>${a.early_exit_minutes ? a.early_exit_minutes + ' د' : '-'}</td>
-                                        <td>${a.actual_worked_hours ? a.actual_worked_hours.toFixed(1) : (a.working_hours ?? '-')}</td>
+                                        <td>${a.actual_worked_hours ? Number(a.actual_worked_hours).toFixed(1) : (a.working_hours ?? '-')}</td>
                                         <td>${a.applied_late_deduction_type ? (deductionLabels[a.applied_late_deduction_type] || a.applied_late_deduction_type) : '-'}</td>
+                                        <td class="${Number(a.salary_deduction_amount || 0) > 0 ? 'text-danger' : ''}">${a.salary_deduction_amount ? Number(a.salary_deduction_amount).toLocaleString() : '-'}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -271,57 +348,55 @@ async function viewSalary(id) {
         }
     }
 
-    const ptsCredit  = Number(s.total_points_credit ?? 0);
-    const ptsDebit   = Number(s.total_points_debit ?? 0);
-    const realIncentives = Number(s.total_incentives ?? 0) - ptsCredit;
-    const realDeductions = Number(s.total_deductions ?? 0) - ptsDebit;
-
-    document.getElementById('salaryDetailBody').innerHTML = `
-    <h6 class="fw-bold text-primary">${s.employee?.name ?? '-'} - ${s.month}/${s.year}</h6>
+    setSalaryModalBody(`
+    <h6 class="fw-bold text-primary">${escHtml(s.employee?.name ?? '-')} - ${s.month}/${s.year}</h6>
     <hr>
-    ${attendanceComponents.length ? `
-        <div class="alert alert-warning py-2" style="font-size:.85rem">
-            <i class="fas fa-business-time me-1"></i>
-            يوجد خصم حضور تلقائي ضمن الراتب: ${attendanceComponents.map(c => `${c.component_name} (${Math.abs(Number(c.amount)).toLocaleString()} ج.م)`).join('، ')}
-        </div>
-    ` : ''}
+    <div class="alert ${balances ? 'alert-light' : 'alert-danger'} py-2" style="font-size:.85rem">
+        ${balances
+            ? '<i class="fas fa-circle-check text-success me-1"></i>المعادلة متوازنة: ' + money(base) + ' + ' + money(totalAdditions) + ' − ' + money(totalAllDeductions) + ' = ' + money(net) + ' ج.م'
+            : '<i class="fas fa-triangle-exclamation me-1"></i>المعادلة غير متوازنة: ' + money(base) + ' + ' + money(totalAdditions) + ' − ' + money(totalAllDeductions) + ' ≠ ' + money(net) + ' ج.م — يُرجى إعادة حساب الرواتب'}
+    </div>
     <div class="row g-2 mb-3">
         <div class="col-12"><h6 class="text-muted mb-2">المستحقات</h6></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">أساسي</small><div class="fw-bold">${Number(s.base_salary).toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">حوافز</small><div class="fw-bold text-success">+${realIncentives.toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">بدلات</small><div class="fw-bold text-success">+${Number(s.total_allowances ?? 0).toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">عمولات</small><div class="fw-bold text-success">+${Number(s.total_commissions ?? 0).toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">نقاط (له)</small><div class="fw-bold text-success">${ptsCredit > 0 ? '+'+ptsCredit.toLocaleString() : '0'} ج.م</div></div></div>
-        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">نقاط (عليه)</small><div class="fw-bold text-danger">${ptsDebit > 0 ? '-'+ptsDebit.toLocaleString() : '0'} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">أساسي</small><div class="fw-bold">${money(base)} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">حوافز</small><div class="fw-bold text-success">+${money(incentives)} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">بدلات</small><div class="fw-bold text-success">+${money(allowances)} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">عمولات</small><div class="fw-bold text-success">+${money(commissions)} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">نقاط (له)</small><div class="fw-bold text-success">${ptsCredit > 0 ? '+'+money(ptsCredit) : '0'} ج.م</div></div></div>
+        <div class="col-6 col-md-2"><div class="p-2 bg-light rounded text-center"><small class="text-muted">نقاط (عليه)</small><div class="fw-bold text-danger">${ptsDebit > 0 ? '-'+money(ptsDebit) : '0'} ج.م</div></div></div>
         <div class="col-12 mt-2"><h6 class="text-muted mb-2">الخصومات</h6></div>
-        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">خصومات</small><div class="fw-bold text-danger">-${realDeductions.toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">سلف</small><div class="fw-bold text-danger">-${Number(s.total_advances ?? 0).toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">مخالفات</small><div class="fw-bold text-danger">-${Number(s.total_violations ?? 0).toLocaleString()} ج.م</div></div></div>
-        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">خصم حضور</small><div class="fw-bold text-danger">-${attendanceAmount.toLocaleString()} ج.م</div></div></div>
+        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">خصومات (مباشرة + حضور)</small><div class="fw-bold text-danger">-${money(deductions)} ج.م</div></div></div>
+        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">سلف</small><div class="fw-bold text-danger">-${money(advances)} ج.م</div></div></div>
+        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">مخالفات</small><div class="fw-bold text-danger">-${money(violations)} ج.م</div></div></div>
+        <div class="col-6 col-md-3"><div class="p-2 bg-light rounded text-center"><small class="text-muted">إجمالي الخصومات</small><div class="fw-bold text-danger">-${money(totalAllDeductions)} ج.م</div></div></div>
     </div>
     ${attendanceDetailHtml}
     ${components.length ? `
         <h6 class="text-muted mb-2">تفاصيل المكونات</h6>
         <div class="table-responsive mb-3">
             <table class="data-table">
-                <thead><tr><th>النوع</th><th>الوصف</th><th>المبلغ</th></tr></thead>
+                <thead><tr><th>النوع</th><th>الوصف</th><th>السبب</th><th>المبلغ</th></tr></thead>
                 <tbody>
                     ${components.map(c => `
                         <tr>
                             <td>${componentLabel(c.component_type)}</td>
-                            <td>${c.component_name ?? '-'}</td>
-                            <td class="${Number(c.amount) < 0 ? 'text-danger' : 'text-success'} fw-bold">${Number(c.amount).toLocaleString()} ج.م</td>
+                            <td>${escHtml(c.component_name ?? '-')}</td>
+                            <td>${escHtml(c.notes || '-')}</td>
+                            <td class="${Number(c.amount) < 0 ? 'text-danger' : 'text-success'} fw-bold">${money(c.amount)} ج.م</td>
                         </tr>
                     `).join('')}
                 </tbody>
+                <tfoot><tr class="fw-bold"><td colspan="3" class="text-end">الصافي</td><td class="text-primary">${money(net)} ج.م</td></tr></tfoot>
             </table>
         </div>
     ` : ''}
     <div class="d-flex justify-content-between p-3 bg-primary text-white rounded">
         <span class="fw-bold fs-5">صافي الراتب</span>
-        <span class="fw-bold fs-4">${Number(s.net_salary).toLocaleString()} ج.م</span>
-    </div>`;
+        <span class="fw-bold fs-4">${money(net)} ج.م</span>
+    </div>`);
 }
+
+function round2(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
 
 function componentLabel(type) {
     return {
@@ -358,25 +433,27 @@ async function printSalariesPDF() {
 
     let totalGross = 0, totalNet = 0;
     const rows = data.map((s, i) => {
-        const incentives = Number(s.total_incentives ?? 0);
-        const deductions = Number(s.total_deductions ?? 0);
-        const ptsCredit  = Number(s.total_points_credit ?? 0);
-        const ptsDebit   = Number(s.total_points_debit ?? 0);
-        const realIncentives = incentives - ptsCredit;
-        const realDeductions = deductions - ptsDebit;
-        totalGross += Number(s.base_salary ?? 0) + realIncentives + Number(s.total_allowances ?? 0) + Number(s.total_commissions ?? 0) + ptsCredit;
+        // Points live in their own columns: never subtract them from
+        // total_incentives / total_deductions or the printed report stops adding up.
+        const incentives  = Number(s.total_incentives ?? 0);
+        const deductions  = Number(s.total_deductions ?? 0);
+        const ptsCredit   = Number(s.total_points_credit ?? 0);
+        const ptsDebit    = Number(s.total_points_debit ?? 0);
+        const allowances  = Number(s.total_allowances ?? 0);
+        const commissions = Number(s.total_commissions ?? 0);
+        totalGross += Number(s.base_salary ?? 0) + incentives + allowances + commissions + ptsCredit;
         totalNet   += Number(s.net_salary ?? 0);
         return `
         <tr>
             <td>${i+1}</td>
             <td><b>${escHtml(s.employee?.name || '—')}</b><br><span style="color:#6b7280;font-size:11px">${escHtml(s.employee?.employee_code || '')}</span></td>
             <td>${Number(s.base_salary).toLocaleString()}</td>
-            <td class="pos">+${realIncentives.toLocaleString()}</td>
-            <td class="pos">+${Number(s.total_allowances ?? 0).toLocaleString()}</td>
-            <td class="pos">+${Number(s.total_commissions ?? 0).toLocaleString()}</td>
+            <td class="pos">+${incentives.toLocaleString()}</td>
+            <td class="pos">+${allowances.toLocaleString()}</td>
+            <td class="pos">+${commissions.toLocaleString()}</td>
             <td class="pos">${ptsCredit > 0 ? '+'+ptsCredit.toLocaleString() : '-'}</td>
             <td class="neg">${ptsDebit > 0 ? '-'+ptsDebit.toLocaleString() : '-'}</td>
-            <td class="neg">-${realDeductions.toLocaleString()}</td>
+            <td class="neg">-${deductions.toLocaleString()}</td>
             <td class="neg">-${Number(s.total_advances ?? 0).toLocaleString()}</td>
             <td><b>${Number(s.net_salary).toLocaleString()}</b></td>
             <td>${salLabel[s.status] || s.status || '-'}</td>

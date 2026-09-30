@@ -9,14 +9,14 @@ use App\Models\Employee;
 use App\Models\EmployeePoint;
 use App\Models\Incentive;
 use App\Models\Salary;
-use App\Services\AttendancePenaltyService;
+use App\Services\SalaryBreakdownService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class FinancialController
 {
-    public function __construct(private AttendancePenaltyService $attendancePenaltyService) {}
+    public function __construct(private SalaryBreakdownService $breakdownService) {}
 
     /**
      * Mobile: financial transactions for the logged-in employee.
@@ -33,6 +33,12 @@ class FinancialController
             ->where('year', $year)
             ->orderByDesc('id')
             ->first();
+
+        // ── The one calculation that feeds every number below ────────────────
+        // The cards and the net are now produced by the same breakdown, so the
+        // statement can no longer contradict itself.
+        $breakdown = $this->breakdownService->build($employee, $month, $year);
+        $totals    = $this->breakdownService->reconcile($breakdown);
 
         $incentives = Incentive::where('employee_id', $employee->id)
             ->where('month', $month)
@@ -85,6 +91,21 @@ class FinancialController
                 'status' => $d->status,
             ]);
 
+        // Every single deducted attendance day becomes its own row, so nothing is
+        // hidden inside an opaque lump sum.
+        foreach ($breakdown['attendance']['rows'] as $row) {
+            $deductions->push([
+                'id' => null,
+                'attendance_id' => $row['attendance_id'],
+                'type' => 'attendance_deduction',
+                'deduction_type' => $row['name'],
+                'amount' => (float) $row['amount'],
+                'reason' => $row['reason'],
+                'date' => $row['date'],
+                'status' => 'computed',
+            ]);
+        }
+
         $advances = Advance::where('employee_id', $employee->id)
             ->whereIn('status', ['active', 'partially_paid', 'pending', 'approved'])
             ->orderByDesc('created_at')
@@ -94,7 +115,7 @@ class FinancialController
                 'type' => 'advance',
                 'amount' => (float) $a->amount,
                 'reason' => $a->reason,
-                'date' => $a->created_at->toDateString(),
+                'date' => $a->advance_date->toDateString(),
                 'status' => $a->status,
                 'installment_amount' => (float) $a->installment_amount,
                 'remaining_installments' => $a->remaining_installments,
@@ -117,64 +138,52 @@ class FinancialController
                 'direction' => $p->type,
             ]);
 
-        $attendanceSummary = $this->attendancePenaltyService
-            ->calculateAttendanceDeductionForSalary($employee, $month, $year, (float) $employee->base_salary);
-        $attendanceDeduction = (float) $attendanceSummary['amount'];
-
-        if ($attendanceDeduction > 0) {
-            $deductions->push([
-                'id' => null,
-                'type' => 'attendance_deduction',
-                'deduction_type' => 'خصم تأخير / انصراف مبكر',
-                'amount' => $attendanceDeduction,
-                'reason' => $attendanceSummary['label'],
-                'date' => null,
-                'status' => 'computed',
-            ]);
-        }
-
-        $pointsCreditTotal = (float) EmployeePoint::where('employee_id', $employee->id)
-            ->where('month', $month)->where('year', $year)
-            ->where('type', 'credit')->sum('total_amount');
-        $pointsDebitTotal  = (float) EmployeePoint::where('employee_id', $employee->id)
-            ->where('month', $month)->where('year', $year)
-            ->where('type', 'debit')->sum('total_amount');
+        $attendanceDeduction = (float) $breakdown['deductions']['attendance'];
 
         $summary = [
-            'base_salary' => (float) $employee->base_salary,
-            'incentives_total' => (float) collect($incentives)->where('status', 'approved')->sum('amount'),
-            'allowances_total' => (float) collect($allowances)->sum('amount'),
-            'points_credit_total' => $pointsCreditTotal,
-            'points_debit_total' => $pointsDebitTotal,
-            'points_net_total' => $pointsCreditTotal - $pointsDebitTotal,
-            'deductions_total' => (float) collect($deductions)->where('status', 'approved')->sum('amount'),
-            'advances_installment_total' => (float) collect($advances)
-                ->whereIn('status', ['active', 'partially_paid'])
-                ->where('remaining_installments', '>', 0)
-                ->sum('installment_amount'),
+            'base_salary' => $totals['base_salary'],
+
+            // Backwards-compatible keys (kept for the mobile app).
+            'incentives_total'    => $breakdown['additions']['incentives'],
+            'allowances_total'    => $breakdown['additions']['allowances'],
+            'points_credit_total' => $breakdown['additions']['points_credit'],
+            'points_debit_total'  => $totals['points_debit'],
+            'points_net_total'    => round($breakdown['additions']['points_credit'] - $totals['points_debit'], 2),
+            // Legacy keys: semantics are UNCHANGED from before, so existing clients
+            // keep working. `deductions_total` stays direct-only because the legacy
+            // `estimated_net` formula subtracted `attendance_deduction_total` on top
+            // of it. Do not fold attendance into this key or clients double count it.
+            'deductions_total'    => $breakdown['deductions']['direct'],
+            'advances_installment_total' => $totals['advances'],
             'attendance_deduction_total' => $attendanceDeduction,
-            'salary_net' => $salary ? (float) $salary->net_salary : null,
-            'salary_gross' => $salary ? (float) $salary->gross_salary : null,
+
+            // Unified / explicit keys.
+            'total_additions'      => $totals['total_additions'],
+            'gross_salary'         => $totals['gross_salary'],
+            'direct_deductions_total' => $breakdown['deductions']['direct'],
+            // direct + attendance (late / early exit / absence), per the agreed contract
+            'total_deductions'     => $totals['total_deductions'],
+            'total_all_deductions' => $totals['total_all_deductions'],
+            'net_salary'           => $totals['net_salary'],
+            'balances'             => $totals['balances'],
+
+            'salary_net'    => $salary ? (float) $salary->net_salary : null,
+            'salary_gross'  => $salary ? (float) $salary->gross_salary : null,
             'salary_status' => $salary?->status,
+            'salary_id'     => $salary?->id,
+            // True when a stored payroll row no longer matches the live figures.
+            'is_stale'      => $salary
+                ? abs((float) $salary->net_salary - $totals['net_salary']) > 0.01
+                : false,
+            'attendance'    => $breakdown['attendance'],
         ];
 
-        if (!$salary) {
-            $gross = $summary['base_salary']
-                + $summary['incentives_total']
-                + $summary['allowances_total']
-                + $summary['points_credit_total'];
-            $estimatedNet = $gross
-                - $summary['deductions_total']
-                - $summary['advances_installment_total']
-                - $summary['points_debit_total']
-                - $summary['attendance_deduction_total'];
-            $summary['estimated_net'] = max(0, round($estimatedNet, 2));
-        } else {
-            $summary['estimated_net'] = (float) $salary->net_salary;
-        }
+        $summary['estimated_net'] = $totals['net_salary'];
 
         return [
             'salary' => $salary,
+            'breakdown' => $breakdown,
+            'totals' => $totals,
             'incentives' => $incentives,
             'allowances' => $allowances,
             'commissions' => $commissions,
@@ -200,7 +209,6 @@ class FinancialController
         $year = (int) $request->get('year', now()->year);
 
         $data = $this->loadEmployeeFinancials($employee, $month, $year);
-
         return response()->json([
             'success' => true,
             'month' => $month,
@@ -210,6 +218,13 @@ class FinancialController
                 'base_salary', 'collection_commission_rate',
             ]),
             'summary' => $data['summary'],
+            'breakdown' => [
+                'additions'   => $data['breakdown']['additions'],
+                'deductions'  => $data['breakdown']['deductions'],
+                'components'  => $data['breakdown']['components'],
+                'attendance'  => $data['breakdown']['attendance'],
+            ],
+            'totals' => $data['totals'],
             'data' => [
                 'salary' => $data['salary'],
                 'incentives' => $data['incentives'],
@@ -235,7 +250,7 @@ class FinancialController
         }
 
         $month = (int) $request->get('month', now()->month);
-        $year = (int) $request->get('year', now()->year);
+        $year  = (int) $request->get('year', now()->year);
 
         $data = $this->loadEmployeeFinancials($employee, $month, $year);
 
@@ -248,6 +263,13 @@ class FinancialController
                 'base_salary', 'collection_commission_rate',
             ]),
             'summary' => $data['summary'],
+            'breakdown' => [
+                'additions'   => $data['breakdown']['additions'],
+                'deductions'  => $data['breakdown']['deductions'],
+                'components'  => $data['breakdown']['components'],
+                'attendance'  => $data['breakdown']['attendance'],
+            ],
+            'totals' => $data['totals'],
             'data' => [
                 'salary' => $data['salary'],
                 'incentives' => $data['incentives'],
